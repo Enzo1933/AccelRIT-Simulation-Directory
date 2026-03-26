@@ -237,7 +237,7 @@ def main():
         'drift_in':   18.0,  # drift to target [inches]
         'target_mm':  5.0,   # target spot radius [mm]
         'energy':     1.0,   # beam energy [MeV]
-        'x0':         0.010, # initial beam radius [m]
+        'x0':         0.005, # initial beam radius [m]
         'xp0':        0.030, # initial divergence [rad]
         'auto_opt':   True,
         'manual_g':   5.0,   # manual gradient [T/m]
