@@ -138,16 +138,13 @@ def track_envelope(bore_m, L_mag_m, gap_m, drift_m, g1, energy_MeV, x0, xp0, n_s
     }
 
 
-def optimize_gradient(bore_m, L_mag_m, gap_m, drift_m, energy_MeV, x0, xp0,
-                       target_r_m, balance_tol=0.30):
+def optimize_gradient(bore_m, L_mag_m, gap_m, drift_m, energy_MeV, x0, xp0):
     """
-    Find optimal gradient that:
-      1. Produces avg spot size closest to target_r_m
-      2. Keeps x and y spot radii within balance_tol (30%) of each other
-      3. Doesn't clip the bore
+    Find optimal gradient that produces the roundest focal spot
+    (minimum x/y imbalance) without clipping the bore.
     """
     best_g = 0.0
-    best_score = np.inf
+    best_imbalance = np.inf
 
     # Coarse sweep
     for g1 in np.arange(0.1, 50, 0.25):
@@ -159,14 +156,9 @@ def optimize_gradient(bore_m, L_mag_m, gap_m, drift_m, energy_MeV, x0, xp0,
         if avg < 1e-12:
             continue
 
-        # Check balance: |fx - fy| / avg < tolerance
         imbalance = abs(fx - fy) / avg
-        if imbalance > balance_tol:
-            continue
-
-        score = abs(avg - target_r_m)
-        if score < best_score:
-            best_score = score
+        if imbalance < best_imbalance:
+            best_imbalance = imbalance
             best_g = g1
 
     # Fine sweep around best
@@ -180,11 +172,8 @@ def optimize_gradient(bore_m, L_mag_m, gap_m, drift_m, energy_MeV, x0, xp0,
             if avg < 1e-12:
                 continue
             imbalance = abs(fx - fy) / avg
-            if imbalance > balance_tol:
-                continue
-            score = abs(avg - target_r_m)
-            if score < best_score:
-                best_score = score
+            if imbalance < best_imbalance:
+                best_imbalance = imbalance
                 best_g = g1
 
     return best_g
@@ -388,8 +377,7 @@ def main():
         # Get gradient
         if auto_opt:
             g1 = optimize_gradient(bore_m, lmag_m, gap_m, drift_m,
-                                    params['energy'], params['x0'], params['xp0'],
-                                    target_m, balance_tol=0.30)
+                                    params['energy'], params['x0'], params['xp0'])
         else:
             g1 = manual_g
 
