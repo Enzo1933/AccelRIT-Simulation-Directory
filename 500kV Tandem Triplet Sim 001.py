@@ -294,7 +294,7 @@ def main():
         'drift_in':    18.0,   # drift to target [inches]
         'target_mm':    2.0,   # target spot radius [mm]
         'energy':       1.0,   # beam energy [MeV]
-        'x0':           0.005, # initial beam radius [m]
+        'x0_in':        0.20,  # initial beam radius [inches]
         'xp0':          0.030, # initial divergence [rad]
         'auto_opt':     True,
         'manual_g1':    5.0,   # manual outer gradient [T/m]
@@ -332,19 +332,20 @@ def main():
         return fig.add_axes([x + slider_width + tb_gap, y - 0.001, tb_width, slider_height + 0.002])
 
     # ---- Column 1: geometry sliders ----
-    s_bore     = Slider(make_slider_ax(slider_left, 0), 'Bore radius (in)',   1.5,  6.0, valinit=params['bore_in'],     valstep=0.1)
+    s_bore     = Slider(make_slider_ax(slider_left, 0), 'Bore radius (in)',   0.25, 6.0, valinit=params['bore_in'],     valstep=0.1)
     s_l_outer  = Slider(make_slider_ax(slider_left, 1), 'Outer quad L (in)',  1.0,  6.0, valinit=params['l_outer_in'],  valstep=0.1)
     s_l_center = Slider(make_slider_ax(slider_left, 2), 'Center quad L (in)', 1.0,  8.0, valinit=params['l_center_in'], valstep=0.1)
     s_gap1     = Slider(make_slider_ax(slider_left, 3), 'Q1-Q2 gap (in)',     0.5,  8.0, valinit=params['gap1_in'],     valstep=0.1)
     s_gap2     = Slider(make_slider_ax(slider_left, 4), 'Q2-Q3 gap (in)',     0.5,  8.0, valinit=params['gap2_in'],     valstep=0.1)
     s_drift    = Slider(make_slider_ax(slider_left, 5), 'Drift to target (in)', 6.0, 36.0, valinit=params['drift_in'],  valstep=0.5)
+    s_x0       = Slider(make_slider_ax(slider_left, 6), 'Init spot r (in)',   0.01, 0.25, valinit=params['x0_in'],    valstep=0.01)
 
     # ---- Column 2: beam/gradient sliders ----
     s_spot = Slider(make_slider_ax(slider_x2, 0), 'Target spot (mm)',    0.1, 10.0, valinit=params['target_mm'],  valstep=0.1)
     s_g1   = Slider(make_slider_ax(slider_x2, 1), 'Grad outer (T/m)',   0.1, 30.0, valinit=params['manual_g1'],  valstep=0.1)
     s_g2   = Slider(make_slider_ax(slider_x2, 2), 'Grad center (T/m)',  0.1, 30.0, valinit=params['manual_g2'],  valstep=0.1)
 
-    all_sliders = [s_bore, s_l_outer, s_l_center, s_gap1, s_gap2, s_drift, s_spot, s_g1, s_g2]
+    all_sliders = [s_bore, s_l_outer, s_l_center, s_gap1, s_gap2, s_drift, s_x0, s_spot, s_g1, s_g2]
     for s in all_sliders:
         s.label.set_fontsize(9)
         s.valtext.set_fontsize(9)
@@ -356,6 +357,7 @@ def main():
     tb_gap1     = TextBox(make_tb_ax(slider_left, 3), '', initial=f'{params["gap1_in"]:.1f}')
     tb_gap2     = TextBox(make_tb_ax(slider_left, 4), '', initial=f'{params["gap2_in"]:.1f}')
     tb_drift    = TextBox(make_tb_ax(slider_left, 5), '', initial=f'{params["drift_in"]:.1f}')
+    tb_x0       = TextBox(make_tb_ax(slider_left, 6), '', initial=f'{params["x0_in"]:.2f}')
     tb_spot     = TextBox(make_tb_ax(slider_x2, 0),   '', initial=f'{params["target_mm"]:.1f}')
     tb_g1       = TextBox(make_tb_ax(slider_x2, 1),   '', initial=f'{params["manual_g1"]:.2f}')
     tb_g2       = TextBox(make_tb_ax(slider_x2, 2),   '', initial=f'{params["manual_g2"]:.2f}')
@@ -381,6 +383,7 @@ def main():
     connect_slider_textbox(s_gap1,     tb_gap1,     '{:.1f}')
     connect_slider_textbox(s_gap2,     tb_gap2,     '{:.1f}')
     connect_slider_textbox(s_drift,    tb_drift,    '{:.1f}')
+    connect_slider_textbox(s_x0,      tb_x0,       '{:.2f}')
     connect_slider_textbox(s_spot,     tb_spot,     '{:.1f}')
     connect_slider_textbox(s_g1,       tb_g1,       '{:.2f}')
     connect_slider_textbox(s_g2,       tb_g2,       '{:.2f}')
@@ -428,6 +431,7 @@ def main():
         gap1_in     = s_gap1.val
         gap2_in     = s_gap2.val
         drift_in    = s_drift.val
+        x0_in       = s_x0.val
         target_mm   = s_spot.val
         manual_g1   = s_g1.val
         manual_g2   = s_g2.val
@@ -439,12 +443,13 @@ def main():
         gap1_m     = gap1_in * IN_TO_M
         gap2_m     = gap2_in * IN_TO_M
         drift_m    = drift_in * IN_TO_M
+        x0_m       = x0_in * IN_TO_M
         target_m   = target_mm * MM_TO_M
 
         # Get gradients
         if auto_opt:
             g1, g2 = optimize_gradient(bore_m, l_outer_m, l_center_m, gap1_m, gap2_m,
-                                        drift_m, params['energy'], params['x0'], params['xp0'],
+                                        drift_m, params['energy'], x0_m, params['xp0'],
                                         target_m)
         else:
             g1, g2 = manual_g1, manual_g2
@@ -460,7 +465,7 @@ def main():
             return
 
         env = track_envelope(bore_m, l_outer_m, l_center_m, gap1_m, gap2_m,
-                              drift_m, g1, g2, params['energy'], params['x0'], params['xp0'])
+                              drift_m, g1, g2, params['energy'], x0_m, params['xp0'])
 
         z = env['z']
         x = env['x']
@@ -581,7 +586,7 @@ def main():
         beam_lines = [
             f"Beam: {params['energy']} MeV proton  |  "
             f"Brho = {Brho:.4f} T*m  |  "
-            f"r0 = {params['x0']*1000:.1f} mm  |  "
+            f"r0 = {x0_m*1000:.1f} mm  |  "
             f"theta0 = {params['xp0']*1000:.0f} mrad",
         ]
         beam_text.set_text('\n'.join(beam_lines))
@@ -593,7 +598,7 @@ def main():
         Mx_total, My_total = total_transfer_matrices(
             l_outer_m, l_center_m, gap1_m, gap2_m, drift_m, g1, g2, params['energy'])
 
-        x0 = params['x0']
+        x0 = x0_m
         xp0 = params['xp0']
         x_final = Mx_total[0, 0] * (x0 * UNIT_X) + Mx_total[0, 1] * (xp0 * UNIT_XP)
         y_final = My_total[0, 0] * (x0 * UNIT_Y) + My_total[0, 1] * (xp0 * UNIT_YP)
@@ -660,23 +665,26 @@ def main():
         s_gap1.label.set_text(f'Q1-Q2 gap ({new_label})')
         s_gap2.label.set_text(f'Q2-Q3 gap ({new_label})')
         s_drift.label.set_text(f'Drift to target ({new_label})')
+        s_x0.label.set_text(f'Init spot r ({new_label})')
         s_spot.label.set_text(f'Target spot ({new_label})')
 
         if units.use_inches:
-            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 1.5, 6.0, 0.1
+            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 0.25, 6.0, 0.1
             s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep = 1.0, 6.0, 0.1
             s_l_center.valmin, s_l_center.valmax, s_l_center.valstep = 1.0, 8.0, 0.1
             s_gap1.valmin, s_gap1.valmax, s_gap1.valstep       = 0.5, 8.0, 0.1
             s_gap2.valmin, s_gap2.valmax, s_gap2.valstep       = 0.5, 8.0, 0.1
             s_drift.valmin, s_drift.valmax, s_drift.valstep    = 6.0, 36.0, 0.5
+            s_x0.valmin, s_x0.valmax, s_x0.valstep             = 0.01, 0.25, 0.01
             s_spot.valmin, s_spot.valmax, s_spot.valstep       = 0.1, 10.0, 0.1
         else:
-            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 38.0, 152.0, 1.0
+            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 6.0, 152.0, 1.0
             s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep = 25.0, 152.0, 1.0
             s_l_center.valmin, s_l_center.valmax, s_l_center.valstep = 25.0, 203.0, 1.0
             s_gap1.valmin, s_gap1.valmax, s_gap1.valstep       = 13.0, 203.0, 1.0
             s_gap2.valmin, s_gap2.valmax, s_gap2.valstep       = 13.0, 203.0, 1.0
             s_drift.valmin, s_drift.valmax, s_drift.valstep    = 152.0, 914.0, 5.0
+            s_x0.valmin, s_x0.valmax, s_x0.valstep             = 0.25, 6.35, 0.1
             s_spot.valmin, s_spot.valmax, s_spot.valstep       = 0.1, 10.0, 0.1
 
         update()
