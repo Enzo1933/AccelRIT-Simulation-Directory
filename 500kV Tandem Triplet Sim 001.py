@@ -1,6 +1,6 @@
 """
-Quadrupole Triplet (FDF) Design Tool for 1 MeV Proton Beam Focusing
-====================================================================
+Quadrupole Triplet (FDF) Design Tool for 500kV Tandem Ion Accelerator
+======================================================================
 Interactive matplotlib tool with sliders for all geometry/beam parameters.
 Uses transfer matrix beam optics (hard-edge quad, no fringe fields).
 
@@ -21,25 +21,27 @@ from matplotlib.widgets import Slider, Button, TextBox, CheckButtons
 from matplotlib.ticker import AutoMinorLocator
 
 # ============================================================
-# Constants
+# Constants  (natural / accelerator-physics units)
 # ============================================================
-PROTON_MASS_KG = 1.6726219e-27
-PROTON_CHARGE  = 1.602176634e-19
-MU0            = 4 * np.pi * 1e-7
-MEV_TO_J       = 1.602176634e-13
-C              = 299792458.0
-IN_TO_M        = 0.0254
-MM_TO_M        = 1e-3
+PROTON_REST_KEV = 938_272.046     # proton rest energy  [keV]  (= 938.272 MeV)
+MU0             = 4 * np.pi * 1e-7  # vacuum permeability [H/m]  (needed for A·t)
+C               = 299_792_458.0   # speed of light      [m/s]
+IN_TO_M         = 0.0254
+MM_TO_M         = 1e-3
 
 # ============================================================
 # Physics
 # ============================================================
-def beam_rigidity(energy_MeV):
-    """Compute magnetic rigidity Brho [T*m] for a proton at given kinetic energy."""
-    E_J = energy_MeV * MEV_TO_J
-    E_rest = PROTON_MASS_KG * C**2
-    p = np.sqrt((E_J + E_rest)**2 - E_rest**2) / C
-    return p / PROTON_CHARGE
+def beam_rigidity(energy_keV):
+    """Magnetic rigidity Bρ [T·m] for a proton.
+
+    Natural-units derivation:
+      p [keV/c] = sqrt((T + mc²)² - (mc²)²)
+      Bρ [T·m]  = p [eV/c] / c [m/s]   (for a singly charged particle)
+    No SI mass or charge constants needed.
+    """
+    p_keV_c = np.sqrt((energy_keV + PROTON_REST_KEV)**2 - PROTON_REST_KEV**2)
+    return p_keV_c * 1e3 / C   # keV/c → eV/c, then Bρ = p[eV/c] / c
 
 
 def quad_transfer_matrix(g, L, Brho):
@@ -78,9 +80,9 @@ def drift_matrix(L):
 
 
 def total_transfer_matrices(L_outer_m, L_center_m, gap1_m, gap2_m,
-                             drift_m, g1, g2, energy_MeV):
+                             drift_m, g1, g2, energy_keV):
     """Compute total x and y transfer matrices through the full FDF triplet."""
-    Brho = beam_rigidity(energy_MeV)
+    Brho = beam_rigidity(energy_keV)
     regions = [
         ('quad',  g1,  L_outer_m),
         ('drift', 0.0, gap1_m),
@@ -102,12 +104,12 @@ def total_transfer_matrices(L_outer_m, L_center_m, gap1_m, gap2_m,
 
 
 def track_envelope(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
-                   drift_m, g1, g2, energy_MeV, x0, xp0, n_steps=400):
+                   drift_m, g1, g2, energy_keV, x0, xp0, n_steps=400):
     """
     Track beam envelope through FDF triplet.
     Q1(+g1) -> gap1 -> Q2(-g2) -> gap2 -> Q3(+g1) -> drift -> target
     """
-    Brho = beam_rigidity(energy_MeV)
+    Brho = beam_rigidity(energy_keV)
     total_length = L_outer_m + gap1_m + L_center_m + gap2_m + L_outer_m + drift_m
 
     regions = [
@@ -176,7 +178,7 @@ def track_envelope(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
 
 
 def _sweep_gradients(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
-                     drift_m, energy_MeV, x0, xp0, target_r_m,
+                     drift_m, energy_keV, x0, xp0, target_r_m,
                      g1_range, g2_range, n_steps, imbalance_thresh):
     """
     Sweep (g1, g2) grid.
@@ -190,7 +192,7 @@ def _sweep_gradients(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
     for g1 in g1_range:
         for g2 in g2_range:
             env = track_envelope(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
-                                 drift_m, g1, g2, energy_MeV, x0, xp0, n_steps=n_steps)
+                                 drift_m, g1, g2, energy_keV, x0, xp0, n_steps=n_steps)
             if env['max_env_x'] > bore_m * 0.95 or env['max_env_y'] > bore_m * 0.95:
                 continue
             fx, fy = env['final_x'], env['final_y']
@@ -212,7 +214,7 @@ def _sweep_gradients(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
 
 
 def optimize_gradient(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
-                      drift_m, energy_MeV, x0, xp0, target_r_m):
+                      drift_m, energy_keV, x0, xp0, target_r_m):
     """
     2D optimization over (g1, g2) for FDF triplet.
     Finds the roundest spot closest to target_r_m.
@@ -220,7 +222,7 @@ def optimize_gradient(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
     # Coarse sweep
     g1, g2 = _sweep_gradients(
         bore_m, L_outer_m, L_center_m, gap1_m, gap2_m, drift_m,
-        energy_MeV, x0, xp0, target_r_m,
+        energy_keV, x0, xp0, target_r_m,
         np.arange(0.5, 25, 1.0), np.arange(0.5, 25, 1.0),
         n_steps=80, imbalance_thresh=0.15)
 
@@ -230,7 +232,7 @@ def optimize_gradient(bore_m, L_outer_m, L_center_m, gap1_m, gap2_m,
     # Fine sweep around best
     g1, g2 = _sweep_gradients(
         bore_m, L_outer_m, L_center_m, gap1_m, gap2_m, drift_m,
-        energy_MeV, x0, xp0, target_r_m,
+        energy_keV, x0, xp0, target_r_m,
         np.arange(max(0.1, g1 - 1.5), g1 + 1.5, 0.1),
         np.arange(max(0.1, g2 - 1.5), g2 + 1.5, 0.1),
         n_steps=200, imbalance_thresh=0.10)
@@ -293,20 +295,18 @@ def main():
         'gap2_in':      2.0,   # Q2-Q3 edge-to-edge gap [inches]
         'drift_in':    18.0,   # drift to target [inches]
         'target_mm':    2.0,   # target spot radius [mm]
-        'energy':       1.0,   # beam energy [MeV]
+        'energy_keV':1000.0,   # beam kinetic energy [keV]
         'x0_in':        0.20,  # initial beam radius [inches]
-        'xp0':          0.030, # initial divergence [rad]
+        'xp0_mrad':    30.0,   # initial divergence [mrad]
         'auto_opt':     True,
         'manual_g1':    5.0,   # manual outer gradient [T/m]
         'manual_g2':   10.0,   # manual center gradient [T/m]
     }
 
-    Brho = beam_rigidity(params['energy'])
-
     # ---- Figure layout ----
     fig = plt.figure(figsize=(14, 10))
     fig.patch.set_facecolor('#f8f8f6')
-    fig.suptitle('Quadrupole Triplet (FDF) Design Tool — 1 MeV Proton Beam',
+    fig.suptitle('Quadrupole Triplet (FDF) Design Tool — 500kV Tandem Ion Accelerator',
                  fontsize=14, fontweight='bold', y=0.98)
 
     ax = fig.add_axes([0.06, 0.44, 0.52, 0.48])
@@ -331,21 +331,24 @@ def main():
         y = row0_y - row * row_step
         return fig.add_axes([x + slider_width + tb_gap, y - 0.001, tb_width, slider_height + 0.002])
 
-    # ---- Column 1: geometry sliders ----
-    s_bore     = Slider(make_slider_ax(slider_left, 0), 'Bore radius (in)',   0.25, 6.0, valinit=params['bore_in'],     valstep=0.1)
-    s_l_outer  = Slider(make_slider_ax(slider_left, 1), 'Outer quad L (in)',  1.0,  6.0, valinit=params['l_outer_in'],  valstep=0.1)
-    s_l_center = Slider(make_slider_ax(slider_left, 2), 'Center quad L (in)', 1.0,  8.0, valinit=params['l_center_in'], valstep=0.1)
-    s_gap1     = Slider(make_slider_ax(slider_left, 3), 'Q1-Q2 gap (in)',     0.5,  8.0, valinit=params['gap1_in'],     valstep=0.1)
-    s_gap2     = Slider(make_slider_ax(slider_left, 4), 'Q2-Q3 gap (in)',     0.5,  8.0, valinit=params['gap2_in'],     valstep=0.1)
-    s_drift    = Slider(make_slider_ax(slider_left, 5), 'Drift to target (in)', 6.0, 36.0, valinit=params['drift_in'],  valstep=0.5)
-    s_x0       = Slider(make_slider_ax(slider_left, 6), 'Init spot r (in)',   0.01, 0.25, valinit=params['x0_in'],    valstep=0.01)
+    # ---- Column 1: geometry sliders (rows 0-7) ----
+    s_bore     = Slider(make_slider_ax(slider_left, 0), 'Bore radius (in)',        0.25,  6.0, valinit=params['bore_in'],     valstep=0.1)
+    s_l_outer  = Slider(make_slider_ax(slider_left, 1), 'Outer quad L (in)',       1.0,   6.0, valinit=params['l_outer_in'],  valstep=0.1)
+    s_l_center = Slider(make_slider_ax(slider_left, 2), 'Center quad L (in)',      1.0,   8.0, valinit=params['l_center_in'], valstep=0.1)
+    s_gap1     = Slider(make_slider_ax(slider_left, 3), 'Q1-Q2 gap (in)',          0.5,   8.0, valinit=params['gap1_in'],     valstep=0.1)
+    s_gap2     = Slider(make_slider_ax(slider_left, 4), 'Q2-Q3 gap (in)',          0.5,   8.0, valinit=params['gap2_in'],     valstep=0.1)
+    s_drift    = Slider(make_slider_ax(slider_left, 5), 'Drift to target (in)',    6.0,  36.0, valinit=params['drift_in'],    valstep=0.5)
+    s_x0       = Slider(make_slider_ax(slider_left, 6), 'Init spot r (in)',        0.01,  0.25, valinit=params['x0_in'],      valstep=0.01)
+    s_xp0      = Slider(make_slider_ax(slider_left, 7), 'Init divergence (mrad)',  0.5, 100.0, valinit=params['xp0_mrad'],    valstep=0.5)
 
-    # ---- Column 2: beam/gradient sliders ----
-    s_spot = Slider(make_slider_ax(slider_x2, 0), 'Target spot (mm)',    0.1, 10.0, valinit=params['target_mm'],  valstep=0.1)
-    s_g1   = Slider(make_slider_ax(slider_x2, 1), 'Grad outer (T/m)',   0.1, 30.0, valinit=params['manual_g1'],  valstep=0.1)
-    s_g2   = Slider(make_slider_ax(slider_x2, 2), 'Grad center (T/m)',  0.1, 30.0, valinit=params['manual_g2'],  valstep=0.1)
+    # ---- Column 2: beam/gradient sliders (rows 0-3) ----
+    s_energy = Slider(make_slider_ax(slider_x2, 0), 'Beam energy (keV)',  100.0, 3000.0, valinit=params['energy_keV'], valstep=50.0)
+    s_spot   = Slider(make_slider_ax(slider_x2, 1), 'Target spot (mm)',     0.1,   10.0, valinit=params['target_mm'],  valstep=0.1)
+    s_g1     = Slider(make_slider_ax(slider_x2, 2), 'Grad outer (T/m)',     0.1,   30.0, valinit=params['manual_g1'],  valstep=0.1)
+    s_g2     = Slider(make_slider_ax(slider_x2, 3), 'Grad center (T/m)',    0.1,   30.0, valinit=params['manual_g2'],  valstep=0.1)
 
-    all_sliders = [s_bore, s_l_outer, s_l_center, s_gap1, s_gap2, s_drift, s_x0, s_spot, s_g1, s_g2]
+    all_sliders = [s_bore, s_l_outer, s_l_center, s_gap1, s_gap2, s_drift, s_x0, s_xp0,
+                   s_energy, s_spot, s_g1, s_g2]
     for s in all_sliders:
         s.label.set_fontsize(9)
         s.valtext.set_fontsize(9)
@@ -358,9 +361,11 @@ def main():
     tb_gap2     = TextBox(make_tb_ax(slider_left, 4), '', initial=f'{params["gap2_in"]:.1f}')
     tb_drift    = TextBox(make_tb_ax(slider_left, 5), '', initial=f'{params["drift_in"]:.1f}')
     tb_x0       = TextBox(make_tb_ax(slider_left, 6), '', initial=f'{params["x0_in"]:.2f}')
-    tb_spot     = TextBox(make_tb_ax(slider_x2, 0),   '', initial=f'{params["target_mm"]:.1f}')
-    tb_g1       = TextBox(make_tb_ax(slider_x2, 1),   '', initial=f'{params["manual_g1"]:.2f}')
-    tb_g2       = TextBox(make_tb_ax(slider_x2, 2),   '', initial=f'{params["manual_g2"]:.2f}')
+    tb_xp0      = TextBox(make_tb_ax(slider_left, 7), '', initial=f'{params["xp0_mrad"]:.1f}')
+    tb_energy   = TextBox(make_tb_ax(slider_x2,   0), '', initial=f'{params["energy_keV"]:.0f}')
+    tb_spot     = TextBox(make_tb_ax(slider_x2,   1), '', initial=f'{params["target_mm"]:.1f}')
+    tb_g1       = TextBox(make_tb_ax(slider_x2,   2), '', initial=f'{params["manual_g1"]:.2f}')
+    tb_g2       = TextBox(make_tb_ax(slider_x2,   3), '', initial=f'{params["manual_g2"]:.2f}')
 
     def connect_slider_textbox(slider, textbox, fmt):
         def on_submit(text):
@@ -383,7 +388,9 @@ def main():
     connect_slider_textbox(s_gap1,     tb_gap1,     '{:.1f}')
     connect_slider_textbox(s_gap2,     tb_gap2,     '{:.1f}')
     connect_slider_textbox(s_drift,    tb_drift,    '{:.1f}')
-    connect_slider_textbox(s_x0,      tb_x0,       '{:.2f}')
+    connect_slider_textbox(s_x0,       tb_x0,       '{:.2f}')
+    connect_slider_textbox(s_xp0,      tb_xp0,      '{:.1f}')
+    connect_slider_textbox(s_energy,   tb_energy,   '{:.0f}')
     connect_slider_textbox(s_spot,     tb_spot,     '{:.1f}')
     connect_slider_textbox(s_g1,       tb_g1,       '{:.2f}')
     connect_slider_textbox(s_g2,       tb_g2,       '{:.2f}')
@@ -397,14 +404,14 @@ def main():
             tb.ax.set_alpha(alpha)
         fig.canvas.draw_idle()
 
-    # ---- Auto-optimize checkbox ----
-    ax_check = fig.add_axes([slider_x2, row0_y - 3 * row_step, 0.2, 0.025])
+    # ---- Auto-optimize checkbox (col 2, row 4) ----
+    ax_check = fig.add_axes([slider_x2, row0_y - 4 * row_step, 0.2, 0.025])
     check_auto = CheckButtons(ax_check, ['Auto-optimize gradients'], [params['auto_opt']])
     check_auto.labels[0].set_fontsize(9)
     set_grad_active(not params['auto_opt'])
 
     # ---- Unit toggle button ----
-    ax_unit_btn = fig.add_axes([slider_x2 + 0.22, row0_y - 3 * row_step, 0.06, 0.025])
+    ax_unit_btn = fig.add_axes([slider_x2 + 0.22, row0_y - 4 * row_step, 0.06, 0.025])
     btn_unit = Button(ax_unit_btn, 'mm <> in', hovercolor='#ddd')
     btn_unit.label.set_fontsize(8)
 
@@ -432,7 +439,9 @@ def main():
         gap2_in     = s_gap2.val
         drift_in    = s_drift.val
         x0_in       = s_x0.val
+        xp0_mrad    = s_xp0.val
         target_mm   = s_spot.val
+        energy_keV  = s_energy.val
         manual_g1   = s_g1.val
         manual_g2   = s_g2.val
         auto_opt    = params['auto_opt']
@@ -444,13 +453,14 @@ def main():
         gap2_m     = gap2_in * IN_TO_M
         drift_m    = drift_in * IN_TO_M
         x0_m       = x0_in * IN_TO_M
+        xp0_rad    = xp0_mrad * 1e-3
         target_m   = target_mm * MM_TO_M
+        Brho       = beam_rigidity(energy_keV)
 
         # Get gradients
         if auto_opt:
             g1, g2 = optimize_gradient(bore_m, l_outer_m, l_center_m, gap1_m, gap2_m,
-                                        drift_m, params['energy'], x0_m, params['xp0'],
-                                        target_m)
+                                        drift_m, energy_keV, x0_m, xp0_rad, target_m)
         else:
             g1, g2 = manual_g1, manual_g2
 
@@ -465,7 +475,7 @@ def main():
             return
 
         env = track_envelope(bore_m, l_outer_m, l_center_m, gap1_m, gap2_m,
-                              drift_m, g1, g2, params['energy'], x0_m, params['xp0'])
+                              drift_m, g1, g2, energy_keV, x0_m, xp0_rad)
 
         z = env['z']
         x = env['x']
@@ -530,7 +540,8 @@ def main():
         ax.set_ylim(-max_r, max_r)
         ax.legend(loc='upper right', fontsize=8, framealpha=0.9)
         ax.tick_params(labelsize=8)
-        ax.set_title(f'Beam envelope through FDF triplet  |  g_outer = {g1:.2f}, g_center = {g2:.2f} T/m',
+        ax.set_title(f'Beam envelope — {energy_keV:.0f} keV proton  |  '
+                     f'g_outer = {g1:.2f}, g_center = {g2:.2f} T/m',
                      fontsize=10, pad=8)
         ax.grid(True, alpha=0.15)
         ax.xaxis.set_minor_locator(AutoMinorLocator(5))
@@ -571,7 +582,7 @@ def main():
             f"{'RESULTS':─^44}",
             f"  g_outer (Q1,Q3): {g1:>6.2f} T/m   g_center (Q2): {g2:>6.2f} T/m",
             f"  B_tip outer: {pole_tip_outer*1000:>7.1f} mT   center: {pole_tip_center*1000:>7.1f} mT",
-            f"  A*t  outer:  {at_outer:>7.0f}       center: {at_center:>7.0f}",
+            f"  A·t  outer:  {at_outer:>7.0f}       center: {at_center:>7.0f}",
             f"  {'':─^42}",
             f"  Spot radius x:  {fx_d:>8.{spot_dec}f}  {du}  ({final_x_mm:.2f} mm)",
             f"  Spot radius y:  {fy_d:>8.{spot_dec}f}  {du}  ({final_y_mm:.2f} mm)",
@@ -584,10 +595,10 @@ def main():
         info_text.set_text('\n'.join(info_lines))
 
         beam_lines = [
-            f"Beam: {params['energy']} MeV proton  |  "
-            f"Brho = {Brho:.4f} T*m  |  "
-            f"r0 = {x0_m*1000:.1f} mm  |  "
-            f"theta0 = {params['xp0']*1000:.0f} mrad",
+            f"Beam: {energy_keV:.0f} keV proton  |  "
+            f"Brho = {Brho:.4f} T·m  |  "
+            f"r\u2080 = {x0_m*1000:.1f} mm  |  "
+            f"\u03b8\u2080 = {xp0_mrad:.1f} mrad",
         ]
         beam_text.set_text('\n'.join(beam_lines))
 
@@ -596,12 +607,10 @@ def main():
         ax_cbar.clear()
 
         Mx_total, My_total = total_transfer_matrices(
-            l_outer_m, l_center_m, gap1_m, gap2_m, drift_m, g1, g2, params['energy'])
+            l_outer_m, l_center_m, gap1_m, gap2_m, drift_m, g1, g2, energy_keV)
 
-        x0 = x0_m
-        xp0 = params['xp0']
-        x_final = Mx_total[0, 0] * (x0 * UNIT_X) + Mx_total[0, 1] * (xp0 * UNIT_XP)
-        y_final = My_total[0, 0] * (x0 * UNIT_Y) + My_total[0, 1] * (xp0 * UNIT_YP)
+        x_final = Mx_total[0, 0] * (x0_m * UNIT_X) + Mx_total[0, 1] * (xp0_rad * UNIT_XP)
+        y_final = My_total[0, 0] * (x0_m * UNIT_Y) + My_total[0, 1] * (xp0_rad * UNIT_YP)
 
         x_mm = x_final * 1000
         y_mm = y_final * 1000
@@ -659,6 +668,7 @@ def main():
         units.use_inches = not units.use_inches
         new_label = units.label
 
+        # Only spatial geometry sliders change with the unit toggle
         s_bore.label.set_text(f'Bore radius ({new_label})')
         s_l_outer.label.set_text(f'Outer quad L ({new_label})')
         s_l_center.label.set_text(f'Center quad L ({new_label})')
@@ -666,26 +676,24 @@ def main():
         s_gap2.label.set_text(f'Q2-Q3 gap ({new_label})')
         s_drift.label.set_text(f'Drift to target ({new_label})')
         s_x0.label.set_text(f'Init spot r ({new_label})')
-        s_spot.label.set_text(f'Target spot ({new_label})')
+        # s_xp0 stays in mrad, s_energy stays in keV, s_spot stays in mm
 
         if units.use_inches:
-            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 0.25, 6.0, 0.1
-            s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep = 1.0, 6.0, 0.1
+            s_bore.valmin, s_bore.valmax, s_bore.valstep           = 0.25, 6.0, 0.1
+            s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep  = 1.0, 6.0, 0.1
             s_l_center.valmin, s_l_center.valmax, s_l_center.valstep = 1.0, 8.0, 0.1
-            s_gap1.valmin, s_gap1.valmax, s_gap1.valstep       = 0.5, 8.0, 0.1
-            s_gap2.valmin, s_gap2.valmax, s_gap2.valstep       = 0.5, 8.0, 0.1
-            s_drift.valmin, s_drift.valmax, s_drift.valstep    = 6.0, 36.0, 0.5
-            s_x0.valmin, s_x0.valmax, s_x0.valstep             = 0.01, 0.25, 0.01
-            s_spot.valmin, s_spot.valmax, s_spot.valstep       = 0.1, 10.0, 0.1
+            s_gap1.valmin, s_gap1.valmax, s_gap1.valstep            = 0.5, 8.0, 0.1
+            s_gap2.valmin, s_gap2.valmax, s_gap2.valstep            = 0.5, 8.0, 0.1
+            s_drift.valmin, s_drift.valmax, s_drift.valstep         = 6.0, 36.0, 0.5
+            s_x0.valmin, s_x0.valmax, s_x0.valstep                 = 0.01, 0.25, 0.01
         else:
-            s_bore.valmin, s_bore.valmax, s_bore.valstep       = 6.0, 152.0, 1.0
-            s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep = 25.0, 152.0, 1.0
+            s_bore.valmin, s_bore.valmax, s_bore.valstep           = 6.0, 152.0, 1.0
+            s_l_outer.valmin, s_l_outer.valmax, s_l_outer.valstep  = 25.0, 152.0, 1.0
             s_l_center.valmin, s_l_center.valmax, s_l_center.valstep = 25.0, 203.0, 1.0
-            s_gap1.valmin, s_gap1.valmax, s_gap1.valstep       = 13.0, 203.0, 1.0
-            s_gap2.valmin, s_gap2.valmax, s_gap2.valstep       = 13.0, 203.0, 1.0
-            s_drift.valmin, s_drift.valmax, s_drift.valstep    = 152.0, 914.0, 5.0
-            s_x0.valmin, s_x0.valmax, s_x0.valstep             = 0.25, 6.35, 0.1
-            s_spot.valmin, s_spot.valmax, s_spot.valstep       = 0.1, 10.0, 0.1
+            s_gap1.valmin, s_gap1.valmax, s_gap1.valstep            = 13.0, 203.0, 1.0
+            s_gap2.valmin, s_gap2.valmax, s_gap2.valstep            = 13.0, 203.0, 1.0
+            s_drift.valmin, s_drift.valmax, s_drift.valstep         = 152.0, 914.0, 5.0
+            s_x0.valmin, s_x0.valmax, s_x0.valstep                 = 0.25, 6.35, 0.1
 
         update()
 
@@ -695,12 +703,13 @@ def main():
     set_grad_active(not params['auto_opt'])
     update()
 
+    Brho_init = beam_rigidity(params['energy_keV'])
     print("=" * 60)
     print("  Quadrupole Triplet (FDF) Design Tool")
-    print("  1 MeV Proton | F-D-F configuration")
+    print(f"  {params['energy_keV']:.0f} keV Proton | F-D-F configuration")
     print("  Drag sliders or type values. Close window to exit.")
     print("=" * 60)
-    print(f"  Brho = {Brho:.4f} T*m")
+    print(f"  Brho = {Brho_init:.4f} T·m  at {params['energy_keV']:.0f} keV")
     print(f"  2 DOF (g_outer, g_center) -> can achieve round spot")
     print()
 
