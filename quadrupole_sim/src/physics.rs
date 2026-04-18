@@ -27,14 +27,14 @@ pub fn quad_transfer_matrix(
     g: f32,     // Field gradient
     L: f32,     // Effective length
     B_rho: f32, // The beam rigidity
-) -> Result<(Array2<f32>, Array2<f32>)> {
+) -> (Array2<f32>, Array2<f32>) {
     let k2 = g / B_rho; // The magnetic gradient
     let k = k2.abs().sqrt();
 
     if k2.abs() < 1e-9 {
         // Near-zero gradient: both planes are drifts
         let drift = drift_matrix(L);
-        return Ok((drift.clone(), drift));
+        return (drift.clone(), drift);
     }
 
     if k2 > 0.0 {
@@ -48,26 +48,63 @@ pub fn quad_transfer_matrix(
             [-1.0 * (L * k).sinh() * k, (L * k).cosh()]
         ];
 
-        Ok((M_f, M_d))
+        (M_f, M_d)
     } else {
         // Defocusing in x, Focusing in y
         let M_f = array![
             [(L * k).cosh(), (L * k).sinh() / k],
-            [
-                -1.0 * (L * k).sinh() * k,
-                (L * k).cosh()
-            ]
+            [-1.0 * (L * k).sinh() * k, (L * k).cosh()]
         ];
         let M_d = array![
             [(L * k).cos(), (L * k).sin() / k],
             [-1.0 * (L * k).sin() * k, (L * k).cos()]
         ];
 
-        Ok((M_f, M_d))
+        (M_f, M_d)
     }
 }
 
 /// Returns a drift matrix
 pub fn drift_matrix(L: f32) -> Array2<f32> {
     array![[1.0, L], [0.0, 1.0]]
+}
+
+/// The Envelope struct, represents a beam envelope
+struct Envelope {
+    x: Vec<f32>,
+    y: Vec<f32>,
+    z: Vec<f32>,
+    // ...
+}
+
+impl Envelope {
+    /// Track beam envelope through FD doublet.
+    /// Returns an Envelope data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
+    pub fn track_envelope(
+        bore_m: f32,
+        L_mag_m: f32,
+        gap_m: f32,
+        drift_m: f32,
+        g1: f32,
+        energy_MeV: f32,
+        x0: f32,
+        xp0: f32,
+        mut n_steps: Option<usize>,
+    ) -> Result<Envelope> {
+        if n_steps == None {
+            n_steps = Some(400); // Default steps is 400
+        }
+
+        let Brho = beam_rigidity(energy_MeV);
+        let total_length = L_mag_m + gap_m + L_mag_m + drift_m;
+
+        let regions = [
+            ("quad", g1, L_mag_m),
+            ("drift", 0.0, gap_m),
+            ("quad", -g1, L_mag_m),
+            ("drift", 0.0, drift_m),
+        ];
+
+        todo!()
+    }
 }
