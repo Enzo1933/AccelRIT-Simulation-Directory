@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+#![allow(unused)]
+
+use ndarray::*;
 
 /// Constants in terms of Natural Units
 const PROTON_MASS: f32 = 938.6; // The mass of a proton in MeV
