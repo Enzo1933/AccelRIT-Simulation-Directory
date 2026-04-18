@@ -28,7 +28,7 @@ pub fn quad_transfer_matrix(
     L: f32,     // Effective length
     B_rho: f32, // The beam rigidity
 ) -> (Array2<f32>, Array2<f32>) {
-    let k2 = g / B_rho; // The magnetic gradient
+    let k2 = g / B_rho; // Magnetic field strength
     let k = k2.abs().sqrt();
 
     if k2.abs() < 1e-9 {
