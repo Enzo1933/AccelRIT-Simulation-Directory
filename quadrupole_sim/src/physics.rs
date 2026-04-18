@@ -28,7 +28,7 @@ pub fn quad_transfer_matrix(
     L: f32,     // Effective length
     B_rho: f32, // The beam rigidity
 ) -> (Array2<f32>, Array2<f32>) {
-    let k2 = g / B_rho; // Magnetic field strength
+    let k2 = g / B_rho; 
     let k = k2.abs().sqrt();
 
     if k2.abs() < 1e-9 {
@@ -45,7 +45,7 @@ pub fn quad_transfer_matrix(
         ];
         let M_d = array![
             [(L * k).cosh(), (L * k).sinh() / k],
-            [-1.0 * (L * k).sinh() * k, (L * k).cosh()]
+            [(L * k).sinh() * k, (L * k).cosh()]
         ];
 
         (M_f, M_d)
@@ -81,11 +81,11 @@ impl Envelope {
     /// Track beam envelope through FD doublet.
     /// Returns an Envelope data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
     pub fn track_envelope(
-        bore_m: f32,
-        L_mag_m: f32,
-        gap_m: f32,
-        drift_m: f32,
-        g1: f32,
+        bore_m: f32,  // Bore radius in meters
+        L_mag_m: f32, // Magnet length in meters
+        gap_m: f32,   // Gap length in meters
+        drift_m: f32, // Drift length in meters
+        g1: f32,      // The field gradient
         energy_MeV: f32,
         x0: f32,
         xp0: f32,
