@@ -2,15 +2,15 @@
 use anyhow::Result;
 use ndarray::{Array2, array};
 
-use crate::PROTON_MASS;
+use crate::{C_Tm, PROTON_MASS};
 
 /// Calculates the beam rigidity (B_rho)
-/// Dimensions: MV/c
+/// Dimensions: T*m
 /// Parameters: ke_mev [the kinetic energy in MeV]
 pub fn beam_rigidity(ke_mev: f32) -> f32 {
     let p = ((ke_mev + PROTON_MASS).powi(2) - PROTON_MASS.powi(2)).sqrt(); // Momentum
 
-    p / 299.792458
+    p / C_Tm
 }
 
 /// Calculates the quadrupole transfer matrix
@@ -25,7 +25,7 @@ pub fn quad_transfer_matrix(
     if k2.abs() < 1e-9 {
         // Near-zero gradient: both planes are drifts
         let drift = drift_matrix(L);
-        return Ok((array![[1.0, 0.0], [0.0, 1.0]], drift));
+        return Ok((drift.clone(), drift));
     }
 
     if k2 > 0.0 {
