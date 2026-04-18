@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 ndarray = "0.17.2"
 montycarlo = "0.1.0"
+anyhow = "1.0.102"
