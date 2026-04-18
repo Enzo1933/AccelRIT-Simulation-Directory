@@ -16,10 +16,11 @@ pub fn beam_rigidity(ke_mev: f32) -> f32 {
 /// Calculates the field gradient
 /// Dimensions: T/m
 /// Parameters: i [current], n [turns], r [radius]
-pub fn field_gradient(i: f32, n: usize, r: f32) -> f32 {
-    let ampere_turns = (n as f32) * i;
+pub fn field_gradient(i: f32, n: usize, r: f32, mu_r: f32) -> f32 {
+    let ni = (n as f32) * i;
+    let kappa = 1.0 / mu_r;  
 
-    2.0 * MU0 * ampere_turns / r.powi(2)
+    (2.0 * MU0 * ni) / (r.powi(2) * (1.0 + kappa))
 }
 
 /// Calculates the quadrupole transfer matrix
