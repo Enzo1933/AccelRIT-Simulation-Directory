@@ -107,7 +107,8 @@ impl Tracker {
         L_mag_m: f64, // Magnet length in meters
         gap_m: f64,   // Gap length in meters
         drift_m: f64, // Drift length in meters
-        g1: f64,      // The field gradient
+        g1: f64,      // The first field gradient
+        g2: f64,      // The second field gradient
         energy_MeV: f64,
         x0: f64,
         xp0: f64,
@@ -119,7 +120,7 @@ impl Tracker {
         let regions = [
             ("quad", g1, L_mag_m),
             ("drift", 0.0, gap_m),
-            ("quad", -g1, L_mag_m),
+            ("quad", -g2, L_mag_m),
             ("drift", 0.0, drift_m),
             ("quad", -g1, L_mag_m),
             ("drift", 0.0, drift_m),
@@ -185,8 +186,8 @@ impl Tracker {
         })
     }
 
-    /// Uses Golden Section Search for gradient optimization
-    pub fn optimize_gradient(
+    /// Performs Coordinate Descent to optimize both g1 and g2.
+    pub fn optimize_triplet(
         L_mag_m: f64,
         gap_m: f64,
         drift_m: f64,
@@ -194,24 +195,54 @@ impl Tracker {
         x0: f64,
         xp0: f64,
         bore: f64,
-    ) -> Option<f64> {
+    ) -> Option<(f64, f64)> {
+        let mut g1 = 20.0; // Initial guess for outer quads
+        let mut g2 = 20.0; // Initial guess for inner quad
+
+        let mut last_g1 = g1;
+        let mut last_g2 = g2;
+
+        // Coordinate Descent: Toggle between optimizing g1 and g2
+        for _ in 0..15 {
+            // Optimize g1 (holding g2 constant)
+            g1 = Self::golden_section_1d(0.1, 100.0, |test_g1| {
+                Self::eval_fitness(
+                    L_mag_m, gap_m, drift_m, test_g1, g2, energy_MeV, x0, xp0, bore,
+                )
+            });
+
+            // Optimize g2 (holding g1 constant)
+            g2 = Self::golden_section_1d(0.1, 100.0, |test_g2| {
+                Self::eval_fitness(
+                    L_mag_m, gap_m, drift_m, g1, test_g2, energy_MeV, x0, xp0, bore,
+                )
+            });
+
+            last_g1 = g1;
+            last_g2 = g2;
+        }
+
+        // Final validation
+        let final_score =
+            Self::eval_fitness(L_mag_m, gap_m, drift_m, g1, g2, energy_MeV, x0, xp0, bore);
+        if final_score > 1.0 {
+            None
+        } else {
+            Some((g1, g2))
+        }
+    }
+
+    /// Generic 1D Golden Section Search
+    fn golden_section_1d<F>(mut a: f64, mut b: f64, mut cost_fn: F) -> f64
+    where
+        F: FnMut(f64) -> f64,
+    {
         let phi = (5.0_f64.sqrt() - 1.0) / 2.0;
-        let mut a = 0.1;
-        let mut b = 100.0;
-
-        let eval = |g: f64| -> Option<f64> {
-            let t = Self::new(L_mag_m, gap_m, drift_m, g, energy_MeV, x0, xp0, 200).ok()?;
-            if t.max_env_x > bore || t.max_env_y > bore {
-                return Some(1e9);
-            }
-            Some((t.x_f - t.y_f).abs() / (t.x_f + t.y_f + 1e-10))
-        };
-
         let mut c = b - phi * (b - a);
         let mut d = a + phi * (b - a);
 
-        for _ in 0..50 {
-            if eval(c) < eval(d) {
+        for _ in 0..40 {
+            if cost_fn(c) < cost_fn(d) {
                 b = d;
             } else {
                 a = c;
@@ -219,12 +250,32 @@ impl Tracker {
             c = b - phi * (b - a);
             d = a + phi * (b - a);
         }
+        (a + b) / 2.0
+    }
 
-        let g_opt = (a + b) / 2.0;
-        if eval(g_opt) > Some(1.0) {
-            None
-        } else {
-            Some(g_opt)
+    /// Fitness function 
+    fn eval_fitness(
+        L: f64,
+        gap: f64,
+        drift: f64,
+        g1: f64,
+        g2: f64,
+        en: f64,
+        x0: f64,
+        xp0: f64,
+        bore: f64,
+    ) -> f64 {
+        match Self::new(L, gap, drift, g1, g2, en, x0, xp0, 150) {
+            Ok(t) => {
+                if t.max_env_x > bore || t.max_env_y > bore {
+                    return 1e9; // Penalty for hitting the pipe
+                }
+                // Balance symmetry and minimize final divergence/size
+                let asymmetry = (t.x_f - t.y_f).abs();
+                let size = t.x_f + t.y_f;
+                (asymmetry / (size + 1e-10)) + size
+            }
+            Err(_) => 1e12,
         }
     }
 }
