@@ -40,28 +40,28 @@ fn quad_transfer_matrix(
 
     if k > 0.0 {
         // Focusing in x, Defocusing in y
-        let M_f = array![
+        let M_x = array![
             [(L * kr).cos(), (L * kr).sin() / kr],
             [-1.0 * (L * kr).sin() * kr, (L * kr).cos()]
         ];
-        let M_d = array![
+        let M_y = array![
             [(L * kr).cosh(), (L * kr).sinh() / kr],
             [(L * kr).sinh() * kr, (L * kr).cosh()]
         ];
 
-        (M_f, M_d)
+        (M_x, M_y)
     } else {
         // Defocusing in x, Focusing in y
-        let M_f = array![
+        let M_x = array![
             [(L * kr).cosh(), (L * kr).sinh() / kr],
             [1.0 * (L * kr).sinh() * kr, (L * kr).cosh()]
         ];
-        let M_d = array![
+        let M_y = array![
             [(L * kr).cos(), (L * kr).sin() / kr],
             [-1.0 * (L * kr).sin() * kr, (L * kr).cos()]
         ];
 
-        (M_f, M_d)
+        (M_x, M_y)
     }
 }
 
