@@ -1,4 +1,6 @@
 #![allow(non_snake_case)]
+use std::f64::EPSILON;
+
 use anyhow::Result;
 use ndarray::{Array1, Array2, array};
 
@@ -213,7 +215,7 @@ impl Tracker {
 
     pub fn optimize_fast(args: &Beam) -> Option<(f64, f64)> {
         let mut g = array![20.0, 20.0]; // [g1, g2]
-        let eps = 1e-4; // Finite difference step
+        let eps = EPSILON; // Finite difference step
         let mut learning_rate = 0.5; // Damping to prevent overshooting
 
         for _ in 0..10 {
