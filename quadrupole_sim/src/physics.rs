@@ -82,7 +82,7 @@ fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
 }
 
 /// The envelope tracker struct
-struct Tracker {
+pub struct Tracker {
     x: Vec<f64>,
     y: Vec<f64>,
     z: Vec<f64>,
@@ -177,54 +177,50 @@ impl Tracker {
             max_env_y,
         })
     }
-}
 
-/// Uses Golden Section Search for gradient optimization
-pub fn optimize_gradient(
-    bore_m:     f64,
-    l_mag_m:    f64,
-    gap_m:      f64,
-    drift_m:    f64,
-    energy_mev: f64,
-    x0:         f64,
-    xp0:        f64,
-) -> Option<f64> {
+    /// Uses Golden Section Search for gradient optimization
+    pub fn optimize_gradient(&self, bore_m: f64) -> Option<f64> {
+        let eval = |g: f64| -> Option<f64> {
+            if self.max_env_x > bore_m * 0.95 {
+                return None;
+            }
+            if self.max_env_y > bore_m * 0.95 {
+                return None;
+            }
 
-    let eval = |g: f64| -> Option<f64> {
-        let env = Tracker::track_envelope(
-            l_mag_m, gap_m, drift_m,
-            g, energy_mev, x0, xp0, 400,
-        ).ok()?;
+            let avg = (self.x_f + self.y_f) / 2.0;
+            if avg < 1e-12 {
+                return None;
+            }
 
-        if env.max_env_x > bore_m * 0.95 { return None; }
-        if env.max_env_y > bore_m * 0.95 { return None; }
+            Some((self.x_f - self.y_f).abs() / avg)
+        };
 
-        let avg = (env.x_f + env.y_f) / 2.0;
-        if avg < 1e-12 { return None; }
+        let phi = (5.0_f64.sqrt() - 1.0) / 2.0;
+        let tol = 1e-4;
 
-        Some((env.x_f - env.y_f).abs() / avg)
-    };
+        let mut a = 0.1_f64;
+        let mut b = 50.0_f64;
+        let mut c = b - phi * (b - a);
+        let mut d = a + phi * (b - a);
 
-    let phi = (5.0_f64.sqrt() - 1.0) / 2.0;
-    let tol = 1e-4;
+        while (b - a).abs() > tol {
+            let fc = eval(c).unwrap_or(f64::INFINITY);
+            let fd = eval(d).unwrap_or(f64::INFINITY);
 
-    let mut a = 0.1_f64;
-    let mut b = 50.0_f64;
-    let mut c = b - phi * (b - a);
-    let mut d = a + phi * (b - a);
+            if fc < fd {
+                b = d;
+            } else {
+                a = c;
+            }
 
-    while (b - a).abs() > tol {
-        let fc = eval(c).unwrap_or(f64::INFINITY);
-        let fd = eval(d).unwrap_or(f64::INFINITY);
+            c = b - phi * (b - a);
+            d = a + phi * (b - a);
+        }
 
-        if fc < fd { b = d; } else { a = c; }
+        let g_opt = (a + b) / 2.0;
 
-        c = b - phi * (b - a);
-        d = a + phi * (b - a);
+        // Verify the solution is actually valid before returning
+        eval(g_opt).map(|_| g_opt)
     }
-
-    let g_opt = (a + b) / 2.0;
-
-    // Verify the solution is actually valid before returning
-    eval(g_opt).map(|_| g_opt)
 }
