@@ -101,7 +101,7 @@ pub struct Tracker {
 }
 
 impl Tracker {
-    /// Track beam envelope through FD doublet.
+    /// Track beam envelope through FDF triplet.
     /// Returns a Tracker data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
     pub fn new(
         L_mag_m: f64, // Magnet length in meters
