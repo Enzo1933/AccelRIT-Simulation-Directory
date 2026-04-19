@@ -136,9 +136,9 @@ impl Tracker {
             let n = usize::max((n_steps as f64 * length / total_length) as usize, 4);
             let dz = length / n as f64;
 
-            let (Mx, My) = match r{
+            let (Mx, My) = match r {
                 "quad" => quad_transfer_matrix(g, dz, Brho),
-                _ => (drift_matrix(dz), drift_matrix(dz))
+                _ => (drift_matrix(dz), drift_matrix(dz)),
             };
 
             for _ in 0..n {
