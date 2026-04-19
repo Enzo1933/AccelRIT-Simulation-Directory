@@ -217,7 +217,7 @@ impl Tracker {
     pub fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
         let mut g = array![20.0, 20.0]; // [g1, g2]
         let eps = EPSILON; // Finite difference step
-        let mut learning_rate = 0.5; // Damping to prevent overshooting
+        let learning_rate = 0.75; // Damping to prevent overshooting
 
         for _ in 0..10 {
             // 1. Calculate current errors (Residuals)
