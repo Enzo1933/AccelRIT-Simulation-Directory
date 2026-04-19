@@ -83,27 +83,25 @@ fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
 
 /// The envelope tracker struct
 struct Tracker {
-    x:            Vec<f64>,
-    y:            Vec<f64>,
-    z:            Vec<f64>,
-    x_f:          f64,      // final |x| position
-    y_f:          f64,      // final |y| position
+    x: Vec<f64>,
+    y: Vec<f64>,
+    z: Vec<f64>,
+    x_f: f64, // final |x| position
+    y_f: f64, // final |y| position
     total_length: f64,
-    q1_end:       f64,
-    q2_start:     f64,
-    q2_end:       f64,
-    x_xover:      Vec<f64>,
-    y_xover:      Vec<f64>,
-    max_env_x:    f64,
-    max_env_y:    f64,
+    q1_end: f64,
+    q2_start: f64,
+    q2_end: f64,
+    x_xover: Vec<f64>,
+    y_xover: Vec<f64>,
+    max_env_x: f64,
+    max_env_y: f64,
 }
 
 impl Tracker {
-
     /// Track beam envelope through FD doublet.
     /// Returns an Tracker data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
-    pub fn track_envelope(
-        bore_m: f64,  // Bore radius in meters
+    pub fn new(
         L_mag_m: f64, // Magnet length in meters
         gap_m: f64,   // Gap length in meters
         drift_m: f64, // Drift length in meters
@@ -113,7 +111,6 @@ impl Tracker {
         xp0: f64,
         n_steps: usize,
     ) -> Result<Tracker> {
-
         let Brho = beam_rigidity(energy_MeV);
         let total_length = L_mag_m + gap_m + L_mag_m + drift_m;
 
@@ -133,7 +130,7 @@ impl Tracker {
 
         for (r, g, length) in regions {
             let n = usize::max((n_steps as f64 * length / total_length) as usize, 4);
-            let dz = length / n as f64 ;
+            let dz = length / n as f64;
 
             for _ in 0..n {
                 match r {
@@ -149,11 +146,7 @@ impl Tracker {
                     }
                 }
 
-                if let Some(z_s) = z.last() {
-                    z.push(z_s + dz)
-                } else {
-                    eprintln!("Error in z tracking envelope")
-                }
+                z.push(z.last().unwrap() + dz);
                 x.push(x_state[0]);
                 y.push(y_state[0]);
             }
@@ -161,15 +154,17 @@ impl Tracker {
 
         let x_f = x_state[0].abs();
         let y_f = y_state[0].abs();
-        
+
         let max_env_x = x.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
         let max_env_y = y.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
-        
+
         let x_xover = find_crossovers(&x, &z);
         let y_xover = find_crossovers(&y, &z);
-        
+
         Ok(Tracker {
-            x, y, z,
+            x,
+            y,
+            z,
             x_f,
             y_f,
             total_length,
@@ -183,4 +178,3 @@ impl Tracker {
         })
     }
 }
-
