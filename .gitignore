@@ -1,5 +1,5 @@
 /ibsimu
 quadrupole_sim/target
 e_field_solver/target
-IBSimu.csv
+beam_tracing.csv
 FEMM-Lookup.csv
