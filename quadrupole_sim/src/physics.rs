@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 use std::f64::EPSILON;
 
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use ndarray::{Array1, Array2, array};
 use std::fs::File;
 use std::io::Write;
@@ -303,15 +303,18 @@ impl Tracker {
         n_turns: usize,
         mu_r: f64,
         r: f64,
-    ) -> String {
+    ) -> Result<()> {
         let i1 = Self::calculate_required_current(g1, n_turns, r, mu_r);
         let i2 = Self::calculate_required_current(g2, n_turns, r, mu_r);
-
-        format!(
+        let mut file = File::create("FEMM-Lookup.csv")?;
+        
+        writeln!(file,
             "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Radius(m)\n\
              Outer_Quads,{},{},{},{},{}\n\
              Inner_Quad,{},{},{},{},{}",
             g1, i1, n_turns, mu_r, r, g2, i2, n_turns, mu_r, r
-        )
+        );
+
+        Ok(())
     }
 }
