@@ -1,6 +1,8 @@
 #![allow(unused)]
 mod physics;
 
+use std::io::read_to_string;
+
 /// Constants in terms of Natural Units
 const PROTON_MASS: f64 = 938.7; // The mass of a proton in MeV/c^2
 
@@ -12,5 +14,7 @@ const IN_TO_M: f64 = 0.0254; // Conversion factor
 const MM_TO_M: f64 = 1e-3; // Conversion factor
 
 fn main() -> std::io::Result<()> {
+    let buffer: String = String::new();
+
     Ok(())
 }

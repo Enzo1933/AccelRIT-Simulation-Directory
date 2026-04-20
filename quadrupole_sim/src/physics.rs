@@ -131,7 +131,7 @@ pub struct Tracker {
 impl Tracker {
     /// Track beam envelope through FDF triplet.
     /// Returns a Tracker data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
-    pub fn new(
+    fn new(
         beam: &Beam,
         g1: f64, // The first field gradient
         g2: f64, // The second field gradient
@@ -217,7 +217,7 @@ impl Tracker {
     }
 
     /// Optimization using Newton-Raphson
-    pub fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
+    fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
         let mut g = array![20.0, 20.0]; // [g1, g2]
         let eps = EPSILON; // Finite difference step
         let learning_rate = 0.75; // Damping to prevent overshooting
@@ -269,7 +269,7 @@ impl Tracker {
 
     /// Translates optimized gradients into the required coil current (Amps)
     /// Accounts for material properties like relative permeability (mu_r).
-    pub fn calculate_required_current(
+    fn calculate_required_current(
         g: f64,
         n_turns: usize,
         bore_radius_m: f64,
@@ -281,8 +281,12 @@ impl Tracker {
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
-    pub fn export_to_ibsimu(&self, filename: &str) -> Result<()> {
+    pub fn export_to_ibsimu(&self, beam: &Beam, filename: &str) -> Result<()> {
         let mut file = File::create(filename)?;
+        let (g1, g2) = Self::optimize_nr(beam).unwrap(); 
+
+        let final_tracker = Tracker::new(beam, g1, g2, 500)?;
+
         writeln!(file, "z,x_env,y_env")?;
         for i in 0..self.z.len() {
             writeln!(
@@ -298,13 +302,16 @@ impl Tracker {
 
     /// Generates a CSV lookup table for FEMM import
     pub fn export_femm_lookup(
-        &self,
-        g1: f64,
-        g2: f64,
+        beam: &Beam,
         n_turns: usize,
         mu_r: f64,
         r: f64,
     ) -> Result<()> {
+
+        let (g1, g2) = Self::optimize_nr(beam).unwrap(); 
+
+        let final_tracker = Tracker::new(beam, g1, g2, 500)?;
+
         let i1 = Self::calculate_required_current(g1, n_turns, r, mu_r);
         let i2 = Self::calculate_required_current(g2, n_turns, r, mu_r);
         let mut file = File::create("FEMM-Lookup.csv")?;
