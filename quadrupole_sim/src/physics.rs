@@ -2,8 +2,8 @@
 use std::f64::EPSILON;
 
 use anyhow::{Ok, Result};
+use nalgebra::*;
 use ndarray::{Array1, Array2, array};
-use nalgebra::*; 
 use std::fs::File;
 use std::io::Write;
 
@@ -218,9 +218,9 @@ impl Tracker {
 
     /// Optimization using Newton-Raphson
     fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
-        let mut g = array![20.0, 20.0]; // [g1, g2]
-        let eps = EPSILON; // Finite difference step
-        let learning_rate = 0.75; // Damping to prevent overshooting
+        let mut g = array![1.0, 1.0]; // [g1, g2]
+        let eps = 1e-6; // Finite difference step
+        let learning_rate = 0.30; // Damping to prevent overshooting
 
         for _ in 0..10 {
             // 1. Calculate current errors (Residuals)
@@ -252,11 +252,8 @@ impl Tracker {
 
             // 4. Update gradients
             g += &(delta * learning_rate);
-
-            if delta.dot(delta).sqrt() < 1e-5 {
-                return Some((g[0], g[1]));
-            }
         }
+
         Some((g[0], g[1]))
     }
 
@@ -269,54 +266,44 @@ impl Tracker {
 
     /// Translates optimized gradients into the required coil current (Amps)
     /// Accounts for material properties like relative permeability (mu_r).
-    fn calculate_required_current(
-        g: f64,
-        n_turns: usize,
-        bore_radius_m: f64,
-        mu_r: f64,
-    ) -> f64 {
+    fn calculate_required_current(g: f64, n_turns: usize, bore_radius_m: f64, mu_r: f64) -> f64 {
         let kappa = 1.0 / mu_r;
         // Derived from g = (2 * MU0 * N * I) / (r^2 * (1 + kappa))
         (g * bore_radius_m.powi(2) * (1.0 + kappa)) / (2.0 * MU0 * n_turns as f64)
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
-    pub fn export_to_ibsimu(&self, beam: &Beam, filename: &str) -> Result<()> {
-        let mut file = File::create(filename)?;
-        let (g1, g2) = Self::optimize_nr(beam).unwrap(); 
+    pub fn export_to_ibsimu(beam: &Beam) -> Result<()> {
+        let mut file = File::create("IBSimu.csv")?;
+        let (g1, g2) = Self::optimize_nr(beam).unwrap();
 
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
-        for i in 0..self.z.len() {
+        for i in 0..final_tracker.z.len() {
             writeln!(
                 file,
                 "{},{},{}",
-                self.z[i],
-                self.x[i].abs(),
-                self.y[i].abs()
+                final_tracker.z[i],
+                final_tracker.x[i].abs(),
+                final_tracker.y[i].abs()
             )?;
         }
         Ok(())
     }
 
     /// Generates a CSV lookup table for FEMM import
-    pub fn export_femm_lookup(
-        beam: &Beam,
-        n_turns: usize,
-        mu_r: f64,
-        r: f64,
-    ) -> Result<()> {
-
-        let (g1, g2) = Self::optimize_nr(beam).unwrap(); 
+    pub fn export_femm_lookup(beam: &Beam, n_turns: usize, mu_r: f64, r: f64) -> Result<()> {
+        let (g1, g2) = Self::optimize_nr(beam).unwrap();
 
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
 
         let i1 = Self::calculate_required_current(g1, n_turns, r, mu_r);
         let i2 = Self::calculate_required_current(g2, n_turns, r, mu_r);
         let mut file = File::create("FEMM-Lookup.csv")?;
-        
-        writeln!(file,
+
+        writeln!(
+            file,
             "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Radius(m)\n\
              Outer_Quads,{},{},{},{},{}\n\
              Inner_Quad,{},{},{},{},{}",

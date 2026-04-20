@@ -1,7 +1,9 @@
-#![allow(unused)]
+#![allow(unused, non_snake_case)]
 mod physics;
 
-use std::io::read_to_string;
+use std::io::{read_to_string, stdin};
+
+use crate::physics::{Beam, Tracker};
 
 /// Constants in terms of Natural Units
 const PROTON_MASS: f64 = 938.7; // The mass of a proton in MeV/c^2
@@ -14,7 +16,52 @@ const IN_TO_M: f64 = 0.0254; // Conversion factor
 const MM_TO_M: f64 = 1e-3; // Conversion factor
 
 fn main() -> std::io::Result<()> {
-    let buffer: String = String::new();
+    let mut buffer: String = String::new();
+
+    // let split = buffer.split_whitespace();
+    // L_mag_m: f64
+    // gap_m: f64
+    // drift_m: f64
+    // energy_MeV: f64
+    // x0: f64
+    // xp0: f64
+
+    println!(
+        "Please input the entire geometry and material properties with spaces in between each new criteria
+
+                L_mag_m: f64
+                gap_m: f64
+                drift_m: f64
+                energy_MeV: f64
+                x0: f64
+                xp0: f64
+                n_turns: usize
+                mu_r: f64
+                bore: f64
+    "
+    );
+    println!("Enter here: ");
+    let buffer_2 = stdin().read_line(&mut buffer)?;
+    let split = buffer
+        .split_whitespace()
+        .collect::<Vec<&str>>()
+        .iter()
+        .map(|x| x.parse::<f64>().unwrap())
+        .collect::<Vec<f64>>();
+
+    let L_mag_m: f64 = split[0] as f64;
+    let gap_m: f64 = split[1] as f64;
+    let drift_m: f64 = split[2] as f64;
+    let energy_MeV: f64 = split[3] as f64;
+    let x0: f64 = split[4] as f64;
+    let xp0: f64 = split[5] as f64;
+    let n_turns = split[6] as usize;
+    let mu_r = split[7] as f64;
+    let r = split[8] as f64;
+
+    let beam = Beam::new(L_mag_m, gap_m, drift_m, energy_MeV, x0, xp0);
+    let export_femm = Tracker::export_femm_lookup(&beam, n_turns, mu_r, r);
+    let export_ibsimu = Tracker::export_to_ibsimu(&beam);
 
     Ok(())
 }
