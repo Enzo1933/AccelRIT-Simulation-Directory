@@ -274,7 +274,7 @@ impl Tracker {
 
     /// Exports the optimized profile as a CSV for IBSimu import.
     pub fn export_to_ibsimu(beam: &Beam) -> Result<()> {
-        let mut file = File::create("IBSimu.csv")?;
+        let mut file = File::create("../IBSimu.csv")?;
         let (g1, g2) = Self::optimize_nr(beam).unwrap();
 
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
@@ -300,7 +300,7 @@ impl Tracker {
 
         let i1 = Self::calculate_required_current(g1, n_turns, r, mu_r);
         let i2 = Self::calculate_required_current(g2, n_turns, r, mu_r);
-        let mut file = File::create("FEMM-Lookup.csv")?;
+        let mut file = File::create("../FEMM-Lookup.csv")?;
 
         writeln!(
             file,
