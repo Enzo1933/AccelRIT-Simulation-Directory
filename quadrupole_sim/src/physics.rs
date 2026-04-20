@@ -21,7 +21,7 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
 /// Calculates the field gradient
 /// Dimensions: T/m
 /// Parameters: i [current], n [turns], r [radius]
-pub fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64) -> f64 {
+fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64) -> f64 {
     let ni = (n as f64) * i;
     let kappa = 1.0 / mu_r;
 
@@ -218,7 +218,10 @@ impl Tracker {
 
     /// Optimization using Newton-Raphson
     fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
-        let mut g = array![1.0, 1.0]; // [g1, g2]
+        let g1 = field_gradient(2.0, 150, 0.025, 2000.0);
+        let g2 = field_gradient(2.0, 150, 0.025, 2000.0);
+        
+        let mut g = array![g1, g2]; // [g1, g2]
         let eps = 1e-6; // Finite difference step
         let learning_rate = 0.30; // Damping to prevent overshooting
 
@@ -261,7 +264,7 @@ impl Tracker {
         let t = Self::new(beam, g1, g2, 50).unwrap();
         // residual 0: asymmetry
         // residual 1: total size
-        array![t.x_f - t.y_f, t.x_f + t.y_f]
+        array![t.x_f - t.y_f, (t.x_f - beam.x0)]
     }
 
     /// Translates optimized gradients into the required coil current (Amps)
