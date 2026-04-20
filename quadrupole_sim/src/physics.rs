@@ -311,7 +311,7 @@ impl Tracker {
 
         writeln!(
             file,
-            "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Radius(m)\n\
+            "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Bore Radius(m)\n\
              Outer_Quads,{},{},{},{},{}\n\
              Inner_Quad,{},{},{},{},{}",
             g1, i1, n_turns, mu_r, r, g2, i2, n_turns, mu_r, r
