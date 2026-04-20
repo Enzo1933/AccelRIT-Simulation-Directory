@@ -218,14 +218,14 @@ impl Tracker {
 
     /// Optimization using Newton-Raphson
     fn optimize_nr(args: &Beam) -> Option<(f64, f64)> {
-        let g1 = field_gradient(2.0, 150, 0.025, 2000.0);
-        let g2 = field_gradient(2.0, 150, 0.025, 2000.0);
-        
+        let g1 = field_gradient(5.0, 150, 0.025, 2000.0);
+        let g2 = field_gradient(15.0, 150, 0.025, 2000.0);
+
         let mut g = array![g1, g2]; // [g1, g2]
         let eps = 1e-6; // Finite difference step
         let learning_rate = 0.30; // Damping to prevent overshooting
 
-        for _ in 0..10 {
+        for _ in 0..50 {
             // 1. Calculate current errors (Residuals)
             let res = Self::get_residuals(g[0], g[1], args);
 
@@ -255,6 +255,10 @@ impl Tracker {
 
             // 4. Update gradients
             g += &(delta * learning_rate);
+
+            if delta.dot(delta).sqrt() < 1e-5 {
+                return Some((g[0], g[1]));
+            }
         }
 
         Some((g[0], g[1]))
