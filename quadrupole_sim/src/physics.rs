@@ -3,8 +3,8 @@ use std::f64::EPSILON;
 
 use anyhow::Result;
 use ndarray::{Array1, Array2, array};
-use std::io::Write;
 use std::fs::File;
+use std::io::Write;
 
 use crate::{C_TM, MU0, PROTON_MASS};
 
@@ -25,14 +25,6 @@ pub fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64) -> f64 {
     let kappa = 1.0 / mu_r;
 
     (2.0 * MU0 * ni) / (r.powi(2) * (1.0 + kappa))
-}
-
-/// Translates optimized gradients into the required coil current (Amps)
-/// Accounts for material properties like relative permeability (mu_r).
-pub fn calculate_required_current(g: f64, n_turns: usize, bore_radius_m: f64, mu_r: f64) -> f64 {
-    let kappa = 1.0 / mu_r;
-    // Derived from g = (2 * MU0 * N * I) / (r^2 * (1 + kappa))
-    (g * bore_radius_m.powi(2) * (1.0 + kappa)) / (2.0 * MU0 * n_turns as f64)
 }
 
 /// Calculates the quadrupole transfer matrix
@@ -274,6 +266,19 @@ impl Tracker {
         array![t.x_f - t.y_f, t.x_f + t.y_f]
     }
 
+    /// Translates optimized gradients into the required coil current (Amps)
+    /// Accounts for material properties like relative permeability (mu_r).
+    pub fn calculate_required_current(
+        g: f64,
+        n_turns: usize,
+        bore_radius_m: f64,
+        mu_r: f64,
+    ) -> f64 {
+        let kappa = 1.0 / mu_r;
+        // Derived from g = (2 * MU0 * N * I) / (r^2 * (1 + kappa))
+        (g * bore_radius_m.powi(2) * (1.0 + kappa)) / (2.0 * MU0 * n_turns as f64)
+    }
+
     /// Exports the optimized profile as a CSV for IBSimu import.
     pub fn export_to_ibsimu(&self, filename: &str) -> Result<()> {
         let mut file = File::create(filename)?;
@@ -288,5 +293,25 @@ impl Tracker {
             )?;
         }
         Ok(())
+    }
+
+    /// Generates a CSV lookup table for FEMM import
+    pub fn export_femm_lookup(
+        &self,
+        g1: f64,
+        g2: f64,
+        n_turns: usize,
+        mu_r: f64,
+        r: f64,
+    ) -> String {
+        let i1 = Self::calculate_required_current(g1, n_turns, r, mu_r);
+        let i2 = Self::calculate_required_current(g2, n_turns, r, mu_r);
+
+        format!(
+            "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Radius(m)\n\
+             Outer_Quads,{},{},{},{},{}\n\
+             Inner_Quad,{},{},{},{},{}",
+            g1, i1, n_turns, mu_r, r, g2, i2, n_turns, mu_r, r
+        )
     }
 }
