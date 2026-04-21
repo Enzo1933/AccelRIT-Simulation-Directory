@@ -26,10 +26,9 @@ fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
 
     // Calculate pole-tip B-field to check for saturation
     let b_pole = (MU0 * ni) / r;
-    let b_sat = 1.6; // Saturation point of iron in Tesla
 
     // Effective permeability drops as we saturate
-    let mu_eff = mu_r / (1.0 + (b_pole / b_sat).powi(4));
+    let mu_eff = mu_r / (1.0 + (b_pole / sat).powi(4));
     let kappa = 1.0 / mu_eff;
 
     (2.0 * MU0 * ni) / (r.powi(2) * (1.0 + kappa))
@@ -225,7 +224,7 @@ impl Tracker {
 
     /// Optimization using Newton-Raphson
     fn optimize_nr(args: &Beam, n1: usize, n2: usize, r: f64, mu_r: f64, sat: f64) -> Option<(f64, f64)> {
-        let mut i = array![10.0, 15.0]; 
+        let mut i = array![50.0, 50.0]; 
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
 
