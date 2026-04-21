@@ -224,11 +224,11 @@ impl Tracker {
 
     /// Optimization using Newton-Raphson
     fn optimize_nr(args: &Beam, n1: usize, n2: usize, r: f64, mu_r: f64, sat: f64) -> Option<(f64, f64)> {
-        let mut i = array![50.0, 50.0]; 
+        let mut i = array![500.0, 500.0]; 
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
 
-        for _ in 0..100 {
+        for _ in 0..1000 {
             let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args);
 
             let res_i1 = Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args);
