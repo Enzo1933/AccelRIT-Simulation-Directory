@@ -191,9 +191,11 @@ impl Tracker {
                 y.push(sigma_y[[0,0]].sqrt());
             }
         }
+        let x_mean = x.iter().sum::<f64>() / x.len() as f64;
+        let y_mean = y.iter().sum::<f64>() / y.len() as f64;
 
-        let x_f = sigma_x[[0,0]].sqrt();
-        let y_f = sigma_y[[0,0]].sqrt();
+        let x_f = (sigma_x[[0,0]] - x_mean * x_mean).sqrt();
+        let y_f = (sigma_y[[0,0]] - y_mean * y_mean).sqrt();
 
         let max_env_x = x.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
         let max_env_y = y.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
