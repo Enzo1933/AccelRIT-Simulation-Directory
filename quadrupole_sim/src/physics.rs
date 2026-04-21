@@ -286,14 +286,6 @@ impl Tracker {
         array![t.x_f - t.y_f, t.x_f]
     }
 
-    /// Translates optimized gradients into the required coil current (Amps)
-    /// Accounts for material properties like relative permeability (mu_r).
-    fn calculate_required_current(g: f64, n_turns: usize, bore_radius_m: f64, mu_r: f64) -> f64 {
-        let kappa = 1.0 / mu_r;
-        // Derived from g = (2 * MU0 * N * I) / (r^2 * (1 + kappa))
-        (g * bore_radius_m.powi(2) * (1.0 + kappa)) / (2.0 * MU0 * n_turns as f64)
-    }
-
     /// Exports the optimized profile as a CSV for IBSimu import.
     pub fn export_to_ibsimu(
         beam: &Beam,
