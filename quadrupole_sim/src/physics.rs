@@ -166,9 +166,10 @@ impl Tracker {
         let mut y = vec![x0];
         let mut z = vec![0.0];
 
+        let eps = 1e-8;
         let mut sigma_x = array![
-            [x0*x0, x0*xp0],
-            [x0*xp0, xp0*xp0]
+            [x0*x0 + eps, 0.0],
+            [0.0, xp0*xp0 + eps]
         ];
         
         let mut sigma_y = sigma_x.clone();
@@ -183,8 +184,8 @@ impl Tracker {
             };
 
             for _ in 0..n {
-                sigma_x = Mx.dot(&sigma_x).dot(&Mx.t());
-                sigma_y = My.dot(&sigma_y).dot(&My.t());
+                sigma_x = 0.5 * (&sigma_x + &sigma_x.t());
+                sigma_y = 0.5 * (&sigma_y + &sigma_y.t());
 
                 z.push(z.last().unwrap() + dz);
                 x.push(sigma_x[[0,0]].sqrt());
@@ -194,8 +195,8 @@ impl Tracker {
         let x_mean = x.iter().sum::<f64>() / x.len() as f64;
         let y_mean = y.iter().sum::<f64>() / y.len() as f64;
 
-        let x_f = (sigma_x[[0,0]] - x_mean * x_mean).sqrt();
-        let y_f = (sigma_y[[0,0]] - y_mean * y_mean).sqrt();
+        let x_f = sigma_x[[0,0]].sqrt();
+        let y_f = sigma_y[[0,0]].sqrt();
 
         let max_env_x = x.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
         let max_env_y = y.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
@@ -234,7 +235,7 @@ impl Tracker {
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
 
-        for _ in 0..10 {
+        for _ in 0..50 {
             let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args);
 
             let res_i1 = Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args);
