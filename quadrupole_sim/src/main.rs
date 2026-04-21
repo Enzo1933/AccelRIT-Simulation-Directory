@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
     // xp0: f64
 
     println!(
-        "Please input the entire geometry, currents, and material properties with spaces in between each new criteria
+        "Please input the entire geometry, currents, and material properties with spaces in between each new criteria in inches. It will be converted to meters.
 
                 L_mag_m: f64
                 gap_m: f64
@@ -57,7 +57,7 @@ fn main() -> std::io::Result<()> {
     let energy_MeV: f64 = split[3];
     let x0: f64 = split[4] * IN_TO_M;
     let xp0: f64 = split[5] * IN_TO_M;
-    
+
     let n1 = split[6] as usize;
     let n2 = split[7] as usize;
     let mu_r = split[8];
