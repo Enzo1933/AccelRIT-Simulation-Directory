@@ -18,20 +18,31 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
     p / C_TM
 }
 
+/// Solves for the B field of a quadrupole
+fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
+    let ni = i * (n as f64);
+    let mut b = (MU0 * ni) / r; // initial guess
+
+    for _ in 0..250 {
+        let mu = effective_permeability(mu_r, sat, b);
+        b = (MU0 * mu * ni) / r;
+        b = b * (1.0-0.3) + 0.3*b
+    }
+
+    b
+}
+
 /// Calculates the field gradient
 /// Dimensions: T/m
 /// Parameters: i [current], n [turns], r [radius], mu_r [the relative permeability], sat [the saturation]
 fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
-    let ni = (n as f64) * i;
+    let b = solve_b_pole(i,n, r, mu_r, sat);
+    (2.0 * b) / r
+}
 
-    // Calculate pole-tip B-field to check for saturation
-    let b_pole = (MU0 * ni) / r;
-
-    // Effective permeability drops as we saturate
-    let mu_eff = mu_r / (1.0 + (b_pole / sat).powi(4));
-    let kappa = 1.0 / mu_eff;
-
-    (2.0 * MU0 * ni) / (r.powi(2) * (1.0 + kappa))
+/// Calculate Effective Permeability
+fn effective_permeability(mu_r: f64, sat: f64, b_pole: f64) -> f64 {
+    1.0 + (mu_r - 1.0) / (1.0 + (b_pole / sat).powi(4))
 }
 
 /// Calculates the quadrupole transfer matrix
@@ -332,12 +343,18 @@ impl Tracker {
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
+        let b_pole1 = MU0 * (n1 as f64) * i1;
+        let mu_eff1 = mu_r / (1.0 + (b_pole1 / sat).powi(4));
+
+        let b_pole2 = MU0 * (n2 as f64) * i1;
+        let mu_eff2 = mu_r / (1.0 + (b_pole2 / sat).powi(4));
+
         writeln!(
             file,
-            "Magnet,Gradient(T/m),Current(A),Turns,Mu_r,Radius(m)\n\
+            "Magnet,Gradient(T/m),Current(A),Turns,Mu_eff,Radius(m)\n\
              Outer_Quads,{},{},{},{},{}\n\
              Inner_Quad,{},{},{},{},{}",
-            g1, i1, n1, mu_r, r, g2, i2, n2, mu_r, r
+            g1, i1, n1, mu_eff1, r, g2, i2, n2, mu_eff2, r
         );
 
         Ok(())
