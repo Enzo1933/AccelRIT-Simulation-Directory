@@ -22,11 +22,20 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
 fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
     let ni = i * (n as f64);
     let mut b = (MU0 * ni) / r; // initial guess
+    let epsilon = 1e-6;
+    let mut run = true;
 
-    for _ in 0..250 {
+    while run {
+        let old_b = b;
+
         let mu = effective_permeability(mu_r, sat, b);
-        let b2 = (mu * ni) / r;
-        b = b * (1.0-0.3) + 0.3*b2
+        let b_target = (MU0 * mu * ni) / r;
+
+        b = b * 0.7 + 0.3 * b_target;
+
+        if (b - old_b).abs() < epsilon {
+            run = false;
+        }
     }
 
     b
@@ -36,7 +45,7 @@ fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
 /// Dimensions: T/m
 /// Parameters: i [current], n [turns], r [radius], mu_r [the relative permeability], sat [the saturation]
 fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
-    let b = solve_b_pole(i,n, r, mu_r, sat);
+    let b = solve_b_pole(i, n, r, mu_r, sat);
     (2.0 * b) / r
 }
 
@@ -179,26 +188,26 @@ impl Tracker {
 
         let mut x_state: Array1<f64> = array![x0, xp0];
         let mut y_state: Array1<f64> = array![x0, xp0];
-        
+
         for (r, g, length) in regions {
             let n = usize::max((n_steps as f64 * length / total_length) as usize, 4);
             let dz = length / n as f64;
-        
+
             for _ in 0..n {
                 let (Mx, My) = match r {
                     "quad" => quad_transfer_matrix(g, dz, Brho),
                     _ => (drift_matrix(dz), drift_matrix(dz)),
                 };
-        
+
                 x_state = Mx.dot(&x_state);
                 y_state = My.dot(&y_state);
-        
+
                 z.push(z.last().unwrap() + dz);
                 x.push(x_state[0]);
                 y.push(y_state[0]);
             }
         }
-        
+
         let x_f = x_state[0].abs();
         let y_f = y_state[0].abs();
         let x_mean = x.iter().sum::<f64>() / x.len() as f64;
@@ -236,16 +245,25 @@ impl Tracker {
     }
 
     /// Optimization using Newton-Raphson
-    fn optimize_nr(args: &Beam, n1: usize, n2: usize, r: f64, mu_r: f64, sat: f64) -> Option<(f64, f64)> {
-        let mut i = array![10.0, 10.0]; 
+    fn optimize_nr(
+        args: &Beam,
+        n1: usize,
+        n2: usize,
+        r: f64,
+        mu_r: f64,
+        sat: f64,
+    ) -> Option<(f64, f64)> {
+        let mut i = array![10.0, 10.0];
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
 
-        for _ in 0..50 {
+        for _ in 0..5000 {
             let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args);
 
-            let res_i1 = Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args);
-            let res_i2 = Self::get_residuals_from_current(i[0], i[1] + eps, n1, n2, r, mu_r, sat, args);
+            let res_i1 =
+                Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args);
+            let res_i2 =
+                Self::get_residuals_from_current(i[0], i[1] + eps, n1, n2, r, mu_r, sat, args);
 
             let jacobian = array![
                 [(res_i1[0] - res[0]) / eps, (res_i2[0] - res[0]) / eps],
@@ -279,6 +297,25 @@ impl Tracker {
         array![t.x_f - t.y_f, (t.x_f - beam.x0)]
     }
 
+    // fn get_residuals_from_current(
+    //     i1: f64,
+    //     i2: f64,
+    //     n1: usize,
+    //     n2: usize,
+    //     r: f64,
+    //     mu_r: f64,
+    //     sat: f64,
+    //     beam: &Beam,
+    // ) -> Array1<f64> {
+    //     let g1 = field_gradient(i1, n1, r, mu_r, sat);
+    //     let g2 = field_gradient(i2, n2, r, mu_r, sat);
+
+    //     let t = Self::new(beam, g1, g2, 50).unwrap();
+
+    //     // Target: Symmetry and a focal point (x_f -> 0)
+    //     array![t.x_f - t.y_f, t.x_f]
+    // }
+
     fn get_residuals_from_current(
         i1: f64,
         i2: f64,
@@ -292,10 +329,18 @@ impl Tracker {
         let g1 = field_gradient(i1, n1, r, mu_r, sat);
         let g2 = field_gradient(i2, n2, r, mu_r, sat);
 
+        // Check if we are saturating (B = G * r / 2)
+        let b_pole2 = (g2 * r) / 2.0;
+        let saturation_penalty = if b_pole2 > 1.8 {
+            (b_pole2 - 1.8) * 1000.0
+        } else {
+            0.0
+        };
+
         let t = Self::new(beam, g1, g2, 50).unwrap();
 
-        // Target: Symmetry and a focal point (x_f -> 0)
-        array![t.x_f - t.y_f, t.x_f]
+        // The optimizer now has to balance focusing with NOT saturating the iron
+        array![t.x_f - t.y_f, t.x_f + saturation_penalty]
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
@@ -343,11 +388,13 @@ impl Tracker {
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
-        let b_pole1 = MU0 * (n1 as f64) * i1;
-        let mu_eff1 = mu_r / (1.0 + (b_pole1 / sat).powi(4));
+        // In export_femm_lookup
+        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat);
+        let mu_eff1 = effective_permeability(mu_r, sat, b_pole1);
 
-        let b_pole2 = MU0 * (n2 as f64) * i2;
-        let mu_eff2 = mu_r / (1.0 + (b_pole2 / sat).powi(4));
+        // In export_femm_lookup
+        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat);
+        let mu_eff2 = effective_permeability(mu_r, sat, b_pole2);
 
         writeln!(
             file,

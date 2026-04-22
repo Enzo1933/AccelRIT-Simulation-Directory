@@ -27,7 +27,7 @@ fn main() -> std::io::Result<()> {
     // xp0: f64
 
     println!(
-        "Please input the entire geometry, currents, and material properties with spaces in between each new criteria in inches. It will be converted to meters.
+        "Please input the entire geometry and material properties with spaces in between each new criteria in inches. It will be converted to meters.
 
                 L_mag_m: f64
                 gap_m: f64
