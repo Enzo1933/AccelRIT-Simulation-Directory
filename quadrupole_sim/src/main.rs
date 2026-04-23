@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 mod physics;
 mod gui;
+mod b_table;
 
 /// Constants in terms of Natural Units
 const PROTON_MASS: f64 = 938.7; // The mass of a proton in MeV/c^2

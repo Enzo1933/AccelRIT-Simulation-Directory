@@ -1,7 +1,6 @@
-#![allow(non_snake_case, unused)]
+#![allow(non_snake_case)]
 
 use anyhow::{Ok, Result};
-use nalgebra::*;
 use ndarray::{Array1, Array2, array};
 use std::fs::File;
 use std::io::Write;
@@ -209,8 +208,6 @@ impl Tracker {
 
         let x_f = x_state[0].abs();
         let y_f = y_state[0].abs();
-        let x_mean = x.iter().sum::<f64>() / x.len() as f64;
-        let y_mean = y.iter().sum::<f64>() / y.len() as f64;
 
         let max_env_x = x.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);
         let max_env_y = y.iter().map(|v| v.abs()).fold(f64::NEG_INFINITY, f64::max);

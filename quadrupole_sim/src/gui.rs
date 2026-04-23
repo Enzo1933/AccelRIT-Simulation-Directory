@@ -1,8 +1,3 @@
-// Cargo.toml dependencies:
-// eframe = "0.27"
-// egui = "0.27"
-// egui_plot = "0.27"
-
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints, VLine, Polygon};
 

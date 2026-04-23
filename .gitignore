@@ -1,5 +1,6 @@
 /ibsimu
 quadrupole_sim/target
 e_field_solver/target
+ion_source/target
 beam_tracing.csv
 FEMM-Lookup.csv
