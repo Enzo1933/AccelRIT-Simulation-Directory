@@ -255,8 +255,9 @@ impl Tracker {
         let mut i = array![20.0, 20.0];
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
+        let mut run = true;
 
-        for _ in 0..50 {
+        while run {
             let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
 
             let res_i1 =
@@ -283,7 +284,7 @@ impl Tracker {
             i += &(delta * learning_rate);
 
             if delta.dot(delta).sqrt() < 1e-6 {
-                return Some((i[0], i[1]));
+                run = false
             }
         }
         Some((i[0], i[1]))
