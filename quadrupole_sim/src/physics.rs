@@ -18,7 +18,7 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
 
 /// Solves for the B field of a quadrupole
 /// Solve the ODE: F(B) = l_mat*H(B)+l_gap*(B/mu_0) - NI
-pub fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
+pub fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64, l_mag_m: f64, gap_m: f64) -> f64 {
     let ni = i * (n as f64);
     let mut b = (MU0 * ni) / r; // initial guess
     let epsilon = 1e-6;
@@ -37,14 +37,14 @@ pub fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
         }
     }
 
-    b
+    todo!("Add the l_gap and l_mat parameters, run linear interpolation")
 }
 
 /// Calculates the field gradient
 /// Dimensions: T/m
 /// Parameters: i [current], n [turns], r [radius], mu_r [the relative permeability], sat [the saturation]
-pub fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64) -> f64 {
-    let b = solve_b_pole(i, n, r, mu_r, sat);
+pub fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64, l_mag: f64, l_gap: f64) -> f64 {
+    let b = solve_b_pole(i, n, r, mu_r, sat, l_mag, l_gap);
     (2.0 * b) / r
 }
 
@@ -113,12 +113,12 @@ fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
 
 /// Beam struct
 pub struct Beam {
-    L_mag_m: f64,    // Magnet length
-    gap_m: f64,      // Inter-magnet gap (gap between quad-poles)
-    drift_m: f64,    // Drift to the target
-    energy_MeV: f64, // Kinetic energy
-    x0: f64,         // x
-    xp0: f64,        // x prime
+    pub L_mag_m: f64,    // Magnet length
+    pub gap_m: f64,      // Inter-magnet gap (gap between quad-poles)
+    pub drift_m: f64,    // Drift to the target
+    pub energy_MeV: f64, // Kinetic energy
+    pub x0: f64,         // x
+    pub xp0: f64,        // x prime
 }
 
 impl Beam {
@@ -249,18 +249,20 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
+        l_mag_m: f64,
+        gap_m: f64
     ) -> Option<(f64, f64)> {
         let mut i = array![20.0, 20.0];
         let eps = 1e-3; // Step size in Amps
         let learning_rate = 0.50;
 
         for _ in 0..50 {
-            let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args);
+            let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
 
             let res_i1 =
-                Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args);
+                Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
             let res_i2 =
-                Self::get_residuals_from_current(i[0], i[1] + eps, n1, n2, r, mu_r, sat, args);
+                Self::get_residuals_from_current(i[0], i[1] + eps, n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
 
             let jacobian = array![
                 [(res_i1[0] - res[0]) / eps, (res_i2[0] - res[0]) / eps],
@@ -296,9 +298,11 @@ impl Tracker {
         mu_r: f64,
         sat: f64,
         beam: &Beam,
+        l_mag_m: f64,
+        gap_m: f64,
     ) -> Array1<f64> {
-        let g1 = field_gradient(i1, n1, r, mu_r, sat);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
 
         // Check if we are saturating (B = G * r / 2)
         let b_pole2 = (g2 * r) / 2.0;
@@ -322,12 +326,14 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
+        l_mag_m: f64,
+        gap_m: f64,
     ) -> Result<()> {
         let mut file = File::create("../beam_tracing.csv")?;
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat).unwrap();
+        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_mag_m, gap_m).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
@@ -351,17 +357,19 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
+        l_mag_m: f64,
+        gap_m: f64,
     ) -> Result<()> {
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat).unwrap();
+        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_mag_m, gap_m).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
-        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat);
+        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
         let mu_eff1 = effective_permeability(mu_r, sat, b_pole1);
 
-        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat);
+        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
         let mu_eff2 = effective_permeability(mu_r, sat, b_pole2);
 
         writeln!(
@@ -372,6 +380,6 @@ impl Tracker {
             g1, i1, n1, mu_eff1, r, g2, i2, n2, mu_eff2, r
         )?;
 
-        Ok(())
+        todo!()
     }
 }

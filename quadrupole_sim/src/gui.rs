@@ -262,14 +262,14 @@ impl eframe::App for QuadApp {
                 if ui.button("Export IBSimu CSV").clicked() {
                     let beam = self.make_beam();
                     let _ = Tracker::export_to_ibsimu(
-                        &beam, self.n1, self.n2, r, self.mu_r, self.sat
+                        &beam, self.n1, self.n2, r, self.mu_r, self.sat, beam.L_mag_m, beam.gap_m
                     );
                     self.status = "Exported beam_tracing.csv".into();
                 }
                 if ui.button("Export FEMM lookup").clicked() {
                     let beam = self.make_beam();
                     let _ = Tracker::export_femm_lookup(
-                        &beam, self.n1, self.n2, r, self.mu_r, self.sat
+                        &beam, self.n1, self.n2, r, self.mu_r, self.sat, beam.L_mag_m, beam.gap_m
                     );
                     self.status = "Exported FEMM-Lookup.csv".into();
                 }
@@ -419,10 +419,10 @@ impl QuadApp {
 
         self.status = "Running optimizer...".into();
 
-        match Tracker::optimize_nr(&beam, self.n1, self.n2, r, self.mu_r, self.sat) {
+        match Tracker::optimize_nr(&beam, self.n1, self.n2, r, self.mu_r, self.sat, beam.L_mag_m, beam.gap_m) {
             Some((i1, i2)) => {
-                let g1 = field_gradient(i1, self.n1, r, self.mu_r, self.sat);
-                let g2 = field_gradient(i2, self.n2, r, self.mu_r, self.sat);
+                let g1 = field_gradient(i1, self.n1, r, self.mu_r, self.sat, beam.L_mag_m, beam.gap_m);
+                let g2 = field_gradient(i2, self.n2, r, self.mu_r, self.sat, beam.L_mag_m, beam.gap_m);
 
                 match Tracker::new(&beam, g1, g2, 400) {
                     Ok(t) => {
