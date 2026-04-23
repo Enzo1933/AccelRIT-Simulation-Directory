@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints, VLine, Polygon};
+use egui_plot::{Line, Plot, PlotPoints};
 
 use crate::physics::{Beam, Tracker, beam_rigidity, field_gradient};
 
