@@ -16,35 +16,53 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
     p / C_TM
 }
 
+pub fn h_and_slope(b: f64) -> (f64, f64) {
+    todo!()
+}
+
 /// Solves for the B field of a quadrupole
-/// Solve the ODE: F(B) = l_mat*H(B)+l_gap*(B/mu_0) - NI
-pub fn solve_b_pole(i: f64, n: usize, r: f64, mu_r: f64, sat: f64, l_mag_m: f64, gap_m: f64) -> f64 {
-    let ni = i * (n as f64);
-    let mut b = (MU0 * ni) / r; // initial guess
-    let epsilon = 1e-6;
-    let mut run = true;
+/// Solve the ODE: F(B) = l_iron*H(B)+l_gap*(B/mu_0) - NI
+pub fn solve_b_pole(
+    i: f64,
+    n: usize,
+    _r: f64,
+    _mu_r: f64,
+    _sat: f64,
+    l_iron: f64,
+    l_gap: f64,
+) -> f64 {
+    let ni = i * (n as f64); // The mmf we are solving for
+    let mut b = (MU0 * ni) / l_gap; // initial guess for b
+    let eps = 1e-6;
 
-    while run {
-        let old_b = b;
+    loop {
+        let (h, dh_db) = h_and_slope(b);
 
-        let mu = effective_permeability(mu_r, sat, b);
-        let b_target = (MU0 * mu * ni) / r;
-
-        b = b * 0.7 + 0.3 * b_target;
-
-        if (b - old_b).abs() < epsilon {
-            run = false;
+        let f_b = l_iron * h + l_gap * (b / MU0) - ni;
+        let df_db = l_iron * dh_db + l_gap / MU0;
+    
+        let b_new = b - f_b / df_db;
+        
+        if f_b.abs() <= eps || (b_new - b).abs() <= eps {
+            return b_new;
         }
-    }
 
-    todo!("Add the l_gap and l_mat parameters, run linear interpolation")
+        b = b_new;   
+    }
 }
 
 /// Calculates the field gradient
 /// Dimensions: T/m
-/// Parameters: i [current], n [turns], r [radius], mu_r [the relative permeability], sat [the saturation]
-pub fn field_gradient(i: f64, n: usize, r: f64, mu_r: f64, sat: f64, l_mag: f64, l_gap: f64) -> f64 {
-    let b = solve_b_pole(i, n, r, mu_r, sat, l_mag, l_gap);
+pub fn field_gradient(
+    i: f64,   // Current
+    n: usize, // Turns
+    r: f64,   // Bore radius
+    mu_r: f64,
+    sat: f64,
+    l_iron: f64,
+    l_gap: f64,
+) -> f64 {
+    let b = solve_b_pole(i, n, r, mu_r, sat, l_iron, l_gap);
     (2.0 * b) / r
 }
 
@@ -249,8 +267,8 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
-        l_mag_m: f64,
-        gap_m: f64
+        l_iron: f64,
+        l_gap: f64,
     ) -> Option<(f64, f64)> {
         let mut i = array![20.0, 20.0];
         let eps = 1e-3; // Step size in Amps
@@ -258,12 +276,34 @@ impl Tracker {
         let mut run = true;
 
         while run {
-            let res = Self::get_residuals_from_current(i[0], i[1], n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
+            let res = Self::get_residuals_from_current(
+                i[0], i[1], n1, n2, r, mu_r, sat, args, l_iron, l_gap,
+            );
 
-            let res_i1 =
-                Self::get_residuals_from_current(i[0] + eps, i[1], n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
-            let res_i2 =
-                Self::get_residuals_from_current(i[0], i[1] + eps, n1, n2, r, mu_r, sat, args, l_mag_m, gap_m);
+            let res_i1 = Self::get_residuals_from_current(
+                i[0] + eps,
+                i[1],
+                n1,
+                n2,
+                r,
+                mu_r,
+                sat,
+                args,
+                l_iron,
+                l_gap,
+            );
+            let res_i2 = Self::get_residuals_from_current(
+                i[0],
+                i[1] + eps,
+                n1,
+                n2,
+                r,
+                mu_r,
+                sat,
+                args,
+                l_iron,
+                l_gap,
+            );
 
             let jacobian = array![
                 [(res_i1[0] - res[0]) / eps, (res_i2[0] - res[0]) / eps],
@@ -299,11 +339,11 @@ impl Tracker {
         mu_r: f64,
         sat: f64,
         beam: &Beam,
-        l_mag_m: f64,
-        gap_m: f64,
+        l_iron: f64,
+        l_gap: f64,
     ) -> Array1<f64> {
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
 
         // Check if we are saturating (B = G * r / 2)
         let b_pole2 = (g2 * r) / 2.0;
@@ -327,14 +367,14 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
-        l_mag_m: f64,
-        gap_m: f64,
+        l_iron: f64,
+        l_gap: f64,
     ) -> Result<()> {
         let mut file = File::create("../beam_tracing.csv")?;
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_mag_m, gap_m).unwrap();
+        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
@@ -358,19 +398,19 @@ impl Tracker {
         r: f64,
         mu_r: f64,
         sat: f64,
-        l_mag_m: f64,
-        gap_m: f64,
+        l_iron: f64,
+        l_gap: f64,
     ) -> Result<()> {
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_mag_m, gap_m).unwrap();
+        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
+        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
-        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat, l_mag_m, gap_m);
+        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat, l_iron, l_gap);
         let mu_eff1 = effective_permeability(mu_r, sat, b_pole1);
 
-        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat, l_mag_m, gap_m);
+        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat, l_iron, l_gap);
         let mu_eff2 = effective_permeability(mu_r, sat, b_pole2);
 
         writeln!(
@@ -381,6 +421,6 @@ impl Tracker {
             g1, i1, n1, mu_eff1, r, g2, i2, n2, mu_eff2, r
         )?;
 
-        todo!()
+        Ok(())
     }
 }
