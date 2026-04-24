@@ -54,8 +54,6 @@ pub fn field_gradient(
     i: f64,   // Current
     n: usize, // Turns
     r: f64,   // Bore radius
-    mu_r: f64,
-    sat: f64,
     l_iron: f64,
     l_gap: f64,
 ) -> f64 {
@@ -339,8 +337,8 @@ impl Tracker {
         l_iron: f64,
         l_gap: f64,
     ) -> Array1<f64> {
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
+        let g1 = field_gradient(i1, n1, r,  l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r,  l_iron, l_gap);
 
         // Check if we are saturating (B = G * r / 2)
         let b_pole2 = (g2 * r) / 2.0;
@@ -370,8 +368,8 @@ impl Tracker {
         let mut file = File::create("../beam_tracing.csv")?;
         let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
+        let g1 = field_gradient(i1, n1, r,  l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r,  l_iron, l_gap);
         let final_tracker = Tracker::new(beam, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
@@ -400,8 +398,8 @@ impl Tracker {
     ) -> Result<()> {
         let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, mu_r, sat, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
+        let g1 = field_gradient(i1, n1, r,  l_iron, l_gap);
+        let g2 = field_gradient(i2, n2, r,  l_iron, l_gap);
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
         let b_pole1 = solve_b_pole(i1, n1,  l_iron, l_gap);

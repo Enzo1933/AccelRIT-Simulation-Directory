@@ -512,8 +512,6 @@ impl QuadApp {
                     i1,
                     self.n1,
                     r,
-                    self.mu_r,
-                    self.sat,
                     r*2.0,
                     r*5.0,
                 );
@@ -521,8 +519,6 @@ impl QuadApp {
                     i2,
                     self.n2,
                     r,
-                    self.mu_r,
-                    self.sat,
                     r*2.0,
                     r*5.0,
                 );
