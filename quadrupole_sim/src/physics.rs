@@ -25,9 +25,6 @@ pub fn h_and_slope(b: f64) -> (f64, f64) {
 pub fn solve_b_pole(
     i: f64,
     n: usize,
-    _r: f64,
-    _mu_r: f64,
-    _sat: f64,
     l_iron: f64,
     l_gap: f64,
 ) -> f64 {
@@ -62,7 +59,7 @@ pub fn field_gradient(
     l_iron: f64,
     l_gap: f64,
 ) -> f64 {
-    let b = solve_b_pole(i, n, r, mu_r, sat, l_iron, l_gap);
+    let b = solve_b_pole(i, n, l_iron, l_gap);
     (2.0 * b) / r
 }
 
@@ -407,10 +404,10 @@ impl Tracker {
         let g2 = field_gradient(i2, n2, r, mu_r, sat, l_iron, l_gap);
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
-        let b_pole1 = solve_b_pole(i1, n1, r, mu_r, sat, l_iron, l_gap);
+        let b_pole1 = solve_b_pole(i1, n1,  l_iron, l_gap);
         let mu_eff1 = effective_permeability(mu_r, sat, b_pole1);
 
-        let b_pole2 = solve_b_pole(i2, n2, r, mu_r, sat, l_iron, l_gap);
+        let b_pole2 = solve_b_pole(i2, n2, l_iron, l_gap);
         let mu_eff2 = effective_permeability(mu_r, sat, b_pole2);
 
         writeln!(
