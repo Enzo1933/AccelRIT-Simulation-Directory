@@ -1,7 +1,8 @@
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
-use crate::beam_and_tracker::{Beam, Tracker, beam_rigidity, field_gradient};
+use crate::beam_and_tracker::{Beam, Tracker, beam_rigidity};
+use crate::magnet::{MagnetGeometry, field_gradient};
 
 // ============================================================
 // App state

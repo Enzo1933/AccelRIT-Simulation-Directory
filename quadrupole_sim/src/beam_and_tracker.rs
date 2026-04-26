@@ -5,10 +5,7 @@ use ndarray::{Array1, Array2, array};
 use std::fs::File;
 use std::io::Write;
 
-use crate::{
-    C_TM, MU0, PROTON_MASS,
-    bh_table::{self, BHCurve},
-};
+use crate::{C_TM, MU0, PROTON_MASS, magnet::{MagnetGeometry, field_gradient}};
 
 /// Calculates the beam rigidity (B_rho)
 /// Dimensions: T*m
@@ -17,46 +14,6 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
     let p = ((ke_mev + PROTON_MASS).powi(2) - PROTON_MASS.powi(2)).sqrt(); // Momentum
 
     p / C_TM
-}
-
-/// Solves for the B field of a quadrupole
-/// Solve the ODE: F(B) = l_iron*H(B)+l_gap*(B/mu_0) - NI
-pub fn solve_b_pole(i: f64, n: usize, l_iron: f64, l_gap: f64) -> f64 {
-    let ni = i * (n as f64); // The mmf we are solving for
-    let mut b = (MU0 * ni) / l_gap; // initial guess for b
-    let eps = 1e-6;
-
-    let curve = BHCurve::new(&bh_table::B_VALUES, &bh_table::H_GENERIC_STEEL);
-
-    for i in 0..50 {
-        let (h, dh_db) = curve.h_and_slope(b, i);
-
-        let f_b = l_iron * h + l_gap * (b / MU0) - ni;
-        let df_db = l_iron * dh_db + l_gap / MU0;
-
-        let b_new = b - f_b / df_db;
-
-        if f_b.abs() <= eps || (b_new - b).abs() <= eps {
-            return b_new;
-        }
-
-        b = b_new;
-    }
-
-    b
-}
-
-/// Calculates the field gradient
-/// Dimensions: T/m
-pub fn field_gradient(
-    i: f64,   // Current
-    n: usize, // Turns
-    r: f64,   // Bore radius
-    l_iron: f64,
-    l_gap: f64,
-) -> f64 {
-    let b = solve_b_pole(i, n, l_iron, l_gap);
-    (2.0 * b) / r
 }
 
 /// Calculates the quadrupole transfer matrix
@@ -177,7 +134,7 @@ impl Tracker {
             ("quad", g1, L_mag_m),   // Q1
             ("drift", 0.0, gap_m),   // Gap 1
             ("quad", -g2, L_mag_m),  // Q2
-            ("drift", 0.0, gap_m),   // Gap 2 
+            ("drift", 0.0, gap_m),   // Gap 2
             ("quad", g1, L_mag_m),   // Q3 (Must match Q1 polarity)
             ("drift", 0.0, drift_m), // Final Drift to target
         ];
