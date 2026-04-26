@@ -2,7 +2,7 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
 use crate::beam_and_tracker::{Beam, Tracker, beam_rigidity};
-use crate::magnet::{MagnetGeometry, field_gradient};
+use crate::magnet::MagnetGeometry;
 
 // ============================================================
 // App state
@@ -274,30 +274,12 @@ impl eframe::App for QuadApp {
                     ui.add_space(12.0);
                     if ui.button("Export IBSimu CSV").clicked() {
                         let beam = self.make_beam();
-                        let _ = Tracker::export_to_ibsimu(
-                            &beam,
-                            self.n1,
-                            self.n2,
-                            r,
-                            self.mu_r,
-                            self.sat,
-                            r * 2.0,
-                            r * 5.0,
-                        );
+                        let _ = todo!();
                         self.status = "Exported beam_tracing.csv".into();
                     }
                     if ui.button("Export FEMM lookup").clicked() {
                         let beam = self.make_beam();
-                        let _ = Tracker::export_femm_lookup(
-                            &beam,
-                            self.n1,
-                            self.n2,
-                            r,
-                            self.mu_r,
-                            self.sat,
-                            r * 2.0,
-                            r * 5.0,
-                        );
+                        let _ = todo!();
                         self.status = "Exported FEMM-Lookup.csv".into();
                     }
                 }
@@ -481,14 +463,7 @@ impl eframe::App for QuadApp {
 
 impl QuadApp {
     fn make_beam(&self) -> Beam {
-        Beam::new(
-            self.l_mag_in * 0.0254,
-            self.gap_in * 0.0254,
-            self.drift_in * 0.0254,
-            self.energy_mev,
-            self.x0_mm * 1e-3,
-            self.xp0_mrad * 1e-3,
-        )
+        todo!()
     }
 
     fn run(&mut self) {
@@ -497,34 +472,7 @@ impl QuadApp {
 
         self.status = "Running optimizer...".into();
 
-        match Tracker::optimize_nr(
-            &beam,
-            self.n1,
-            self.n2,
-            r,
-            self.mu_r,
-            self.sat,
-            beam.L_mag_m,
-            beam.gap_m,
-        ) {
-            Some((i1, i2)) => {
-                let g1 = field_gradient(i1, self.n1, r, r * 2.0, r * 5.0);
-                let g2 = field_gradient(i2, self.n2, r, r * 2.0, r * 5.0);
-
-                match Tracker::new(&beam, g1, g2, 400) {
-                    Ok(t) => {
-                        self.i1 = Some(i1);
-                        self.i2 = Some(i2);
-                        self.g1 = Some(g1);
-                        self.g2 = Some(g2);
-                        self.tracker = Some(t);
-                        self.status = "Done.".into();
-                    }
-                    Err(e) => self.status = format!("Error: {}", e),
-                }
-            }
-            None => self.status = "No solution found.".into(),
-        }
+        todo!()
     }
 }
 

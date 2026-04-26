@@ -5,7 +5,7 @@ use ndarray::{Array1, Array2, array};
 use std::fs::File;
 use std::io::Write;
 
-use crate::{C_TM, MU0, PROTON_MASS, magnet::{MagnetGeometry, field_gradient}};
+use crate::{C_TM, PROTON_MASS, magnet::MagnetGeometry};
 
 /// Calculates the beam rigidity (B_rho)
 /// Dimensions: T*m
@@ -76,8 +76,6 @@ fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
 
 /// Beam struct
 pub struct Beam {
-    pub L_mag_m: f64,    // Magnet length
-    pub gap_m: f64,      // Inter-magnet gap (gap between quad-poles)
     pub drift_m: f64,    // Drift to the target
     pub energy_MeV: f64, // Kinetic energy
     pub x0: f64,         // x
@@ -85,10 +83,8 @@ pub struct Beam {
 }
 
 impl Beam {
-    pub fn new(L_mag_m: f64, gap_m: f64, drift_m: f64, energy_MeV: f64, x0: f64, xp0: f64) -> Self {
+    pub fn new(drift_m: f64, energy_MeV: f64, x0: f64, xp0: f64) -> Self {
         Beam {
-            L_mag_m,
-            gap_m,
             drift_m,
             energy_MeV,
             x0,
@@ -119,9 +115,15 @@ pub struct Tracker {
 impl Tracker {
     /// Track beam envelope through FDF triplet.
     /// Returns a Tracker data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
-    pub fn new(beam: &Beam, g1: f64, g2: f64, n_steps: usize) -> Result<Tracker> {
-        let L_mag_m: f64 = beam.L_mag_m;
-        let gap_m: f64 = beam.gap_m;
+    pub fn new(
+        beam: &Beam,
+        geo: &MagnetGeometry,
+        g1: f64,
+        g2: f64,
+        n_steps: usize,
+    ) -> Result<Tracker> {
+        let L_mag_m: f64 = geo.l_mag;
+        let gap_m: f64 = geo.r_gap;
         let drift_m: f64 = beam.drift_m;
         let energy_MeV = beam.energy_MeV;
         let x0 = beam.x0;
@@ -199,114 +201,73 @@ impl Tracker {
         })
     }
 
-    /// Optimization using Newton-Raphson
-    pub fn optimize_nr(
-        args: &Beam,
-        n1: usize,
-        n2: usize,
-        r: f64,
-        mu_r: f64,
-        sat: f64,
-        l_iron: f64,
-        l_gap: f64,
-    ) -> Option<(f64, f64)> {
-        let mut i = array![20.0, 20.0];
-        let eps = 1e-3; // Step size in Amps
-        let learning_rate = 0.50;
+    /// Optimize magneto-motive force
+    pub fn optimize_mmf(beam: &Beam, geo: &MagnetGeometry) -> Option<(f64, f64)> {
+        let mut mmf1 = 15000.0; // Outer quads
+        let mut mmf2 = 15000.0; // Inner quad
+
         let mut run = true;
+        let eps = 10.0;
+        let lambda = 0.5; // Damping factor to prevent overshoot
 
         while run {
-            let res = Self::get_residuals_from_current(
-                i[0], i[1], n1, n2, r, mu_r, sat, args, l_iron, l_gap,
-            );
+            let (res_asym, res_size) = Tracker::get_residuals_from_mmf(mmf1, mmf2, beam, geo);
 
-            let res_i1 = Self::get_residuals_from_current(
-                i[0] + eps,
-                i[1],
-                n1,
-                n2,
-                r,
-                mu_r,
-                sat,
-                args,
-                l_iron,
-                l_gap,
-            );
-            let res_i2 = Self::get_residuals_from_current(
-                i[0],
-                i[1] + eps,
-                n1,
-                n2,
-                r,
-                mu_r,
-                sat,
-                args,
-                l_iron,
-                l_gap,
-            );
-
-            let jacobian = array![
-                [(res_i1[0] - res[0]) / eps, (res_i2[0] - res[0]) / eps],
-                [(res_i1[1] - res[1]) / eps, (res_i2[1] - res[1]) / eps]
-            ];
-
-            let det = jacobian[[0, 0]] * jacobian[[1, 1]] - jacobian[[0, 1]] * jacobian[[1, 0]];
-            if det.abs() < 1e-14 {
-                break;
+            // Convergence Check 
+            if res_asym.abs() < 1e-6 && res_size.abs() < 1e-6 {
+                run = false;
             }
 
-            let inv_j = array![
-                [jacobian[[1, 1]] / det, -jacobian[[0, 1]] / det],
-                [-jacobian[[1, 0]] / det, jacobian[[0, 0]] / det]
-            ];
+            let (nudge1_asym, nudge1_size) =
+                Tracker::get_residuals_from_mmf(mmf1 + eps, mmf2, beam, geo);
+            let j11 = (nudge1_asym - res_asym) / eps; // d(Asymmetry) / d(MMF1)
+            let j21 = (nudge1_size - res_size) / eps; // d(Spot Size) / d(MMF1)
 
-            let delta = &inv_j.dot(&(-1.0 * res));
-            i += &(delta * learning_rate);
+            let (nudge2_asym, nudge2_size) =
+                Tracker::get_residuals_from_mmf(mmf1, mmf2 + eps, beam, geo);
+            let j12 = (nudge2_asym - res_asym) / eps; // d(Asymmetry) / d(MMF2)
+            let j22 = (nudge2_size - res_size) / eps; // d(Spot Size) / d(MMF2)
 
-            if delta.dot(delta).sqrt() < 1e-6 {
+            let det = (j11 * j22) - (j12 * j21);
+
+            if det.abs() < 1e-14 {
                 run = false
             }
+
+            // Calculate the raw Newton steps
+            let delta_mmf1 = (j22 * res_asym - j12 * res_size) / det;
+            let delta_mmf2 = (-j21 * res_asym + j11 * res_size) / det;
+
+            // Apply the steps with the damping factor
+            mmf1 -= lambda * delta_mmf1;
+            mmf2 -= lambda * delta_mmf2;
         }
-        Some((i[0], i[1]))
+
+        Some((mmf1, mmf2))
     }
 
-    fn get_residuals_from_current(
-        i1: f64,
-        i2: f64,
-        n1: usize,
-        n2: usize,
-        r: f64,
-        _mu_r: f64,
-        _sat: f64,
+    fn get_residuals_from_mmf(
+        mmf1: f64,
+        mmf2: f64,
         beam: &Beam,
-        l_iron: f64,
-        l_gap: f64,
-    ) -> Array1<f64> {
-        let g1 = field_gradient(i1, n1, r, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, l_iron, l_gap);
+        geo: &MagnetGeometry,
+    ) -> (f64, f64) {
+        let g1 = geo.field_gradient(mmf1);
+        let g2 = geo.field_gradient(mmf2);
 
-        let t = Self::new(beam, g1, g2, 50).unwrap();
+        let t = Self::new(beam, geo, g1, g2, 50).unwrap();
 
-        array![t.x_f - t.y_f, t.x_f]
+        (t.x_f - t.y_f, t.x_f)
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
-    pub fn export_to_ibsimu(
-        beam: &Beam,
-        n1: usize,
-        n2: usize,
-        r: f64,
-        mu_r: f64,
-        sat: f64,
-        l_iron: f64,
-        l_gap: f64,
-    ) -> Result<()> {
+    pub fn export_to_ibsimu(beam: &Beam, geo: &MagnetGeometry) -> Result<()> {
         let mut file = File::create("../beam_tracing.csv")?;
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
+        let (mmf1, mmf2) = Self::optimize_mmf(beam, geo).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, l_iron, l_gap);
-        let final_tracker = Tracker::new(beam, g1, g2, 500)?;
+        let g1 = geo.field_gradient(mmf1);
+        let g2 = geo.field_gradient(mmf2);
+        let final_tracker = Tracker::new(beam, geo, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
         for i in 0..final_tracker.z.len() {
@@ -322,28 +283,19 @@ impl Tracker {
     }
 
     /// Generates a CSV lookup table for FEMM import
-    pub fn export_femm_lookup(
-        beam: &Beam,
-        n1: usize,
-        n2: usize,
-        r: f64,
-        mu_r: f64,
-        sat: f64,
-        l_iron: f64,
-        l_gap: f64,
-    ) -> Result<()> {
-        let (i1, i2) = Self::optimize_nr(beam, n1, n2, r, mu_r, sat, l_iron, l_gap).unwrap();
+    pub fn export_femm_lookup(beam: &Beam, geo: &MagnetGeometry) -> Result<()> {
+        let (mmf1, mmf2) = Self::optimize_mmf(beam, geo).unwrap();
 
-        let g1 = field_gradient(i1, n1, r, l_iron, l_gap);
-        let g2 = field_gradient(i2, n2, r, l_iron, l_gap);
+        let g1 = geo.field_gradient(mmf1);
+        let g2 = geo.field_gradient(mmf2);
         let mut file = File::create("../FEMM-Lookup.csv")?;
 
         writeln!(
             file,
-            "Magnet,Gradient(T/m),Current(A),Turns,Radius(m)\n\
-             Outer_Quads,{},{},{},{}\n\
-             Inner_Quad,{},{},{},{}",
-            g1, i1, n1, r, g2, i2, n2, r
+            "Magnet,Gradient(T/m),Magnetomotive Force (A*t)\n\
+             Outer_Quads,{},{}\n\
+             Inner_Quad,{},{}",
+            g1, mmf1, g2, mmf2
         )?;
 
         Ok(())
