@@ -6,12 +6,10 @@ pub struct MagnetGeometry {
     pub r_gap: f64,  // Radius of the beam pipe (m)
     pub l_mag: f64,  // Physical length of the magnet (m)
     pub w_pole: f64, // Width of the pole tip face (m)
-    pub h_pole: f64, // Height of the pole piece (m)
     pub l_iron: f64, // Average path length through the iron yoke (m)
     pub a_iron: f64, // Average cross-sectional area of the iron (m^2)
     pub mu_i: f64,   // The initial permeability
     pub b_sat: f64,  // The magnetic saturation
-    pub a_mag: f64,  // Cross sectional area of the magnet
 }
 
 impl MagnetGeometry {
@@ -20,23 +18,19 @@ impl MagnetGeometry {
         r_gap: f64,
         l_mag: f64,
         w_pole: f64,
-        h_pole: f64,
         l_iron: f64,
         a_iron: f64,
         mu_i: f64,
         b_sat: f64,
-        a_mag: f64,
     ) -> Self {
         Self {
             r_gap,
             l_mag,
             w_pole,
-            h_pole,
             l_iron,
             a_iron,
             mu_i,
             b_sat,
-            a_mag,
         }
     }
 
@@ -50,7 +44,7 @@ impl MagnetGeometry {
         let R_leak = 1.0 / P_leak;
 
         // The reluctance of the iron
-        let R_iron = self.l_iron / MU0 * mu_eff * self.a_iron;
+        let R_iron = self.l_iron / (MU0 * mu_eff * self.a_iron);
 
         (R_gap, R_leak, R_iron)
     }
