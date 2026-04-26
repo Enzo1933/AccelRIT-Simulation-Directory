@@ -213,7 +213,7 @@ impl Tracker {
         while run {
             let (res_asym, res_size) = Tracker::get_residuals_from_mmf(mmf1, mmf2, beam, geo);
 
-            // Convergence Check 
+            // Convergence Check
             if res_asym.abs() < 1e-6 && res_size.abs() < 1e-6 {
                 run = false;
             }

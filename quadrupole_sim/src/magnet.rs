@@ -37,7 +37,7 @@ impl MagnetGeometry {
     /// Calculates the reluctances of the nodes in the magnet
     fn calculate_reluctances(&self, mu_eff: f64) -> (f64, f64, f64) {
         // Reluctance of the gap
-        let R_gap = self.r_gap / (MU0 * self.l_mag * self.w_pole);
+        let R_gap = 2.0*self.r_gap / (MU0 * self.l_mag * self.w_pole);
 
         // Use the permeance of the leak to calculate the reluctance of the leaking flux
         let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.r_gap).ln() / PI;
