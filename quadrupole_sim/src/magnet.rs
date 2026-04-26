@@ -31,10 +31,16 @@ impl MagnetGeometry {
         }
     }
 
+    /// Calculates the reluctances of the nodes in the magnet
     pub fn calculate_reluctances(&self, mu_eff: f64) -> (f64, f64, f64) {
+        // Reluctance of the gap
         let R_gap = self.r_gap / (MU0 * self.l_mag * self.w_pole);
-        let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.r_gap).ln() / PI;
+
+        // Use the permeance of the leak to calculate the reluctance of the leaking flux
+        let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.r_gap).ln() / PI; 
         let R_leak = 1.0 / P_leak;
+
+        // The reluctance of the iron
         let R_iron = self.l_iron / MU0 * mu_eff * self.a_iron;
 
         (R_gap, R_leak, R_iron)
@@ -43,10 +49,6 @@ impl MagnetGeometry {
 
 /// Solves for the B field of a quadrupole
 pub fn solve_b_pole(i: f64, n: usize, l_iron: f64, l_gap: f64) -> f64 {
-    let ni = i * (n as f64); // The mmf we are solving for
-    let mut b = (MU0 * ni) / l_gap; // initial guess for b
-    let eps = 1e-6;
-
     todo!()
 }
 

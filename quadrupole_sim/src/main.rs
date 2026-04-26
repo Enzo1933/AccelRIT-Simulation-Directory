@@ -1,6 +1,5 @@
 #![allow(non_snake_case)]
 mod beam_and_tracker;
-mod bh_table;
 mod gui;
 mod magnet;
 
