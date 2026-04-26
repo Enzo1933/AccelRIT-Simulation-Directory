@@ -4,7 +4,6 @@ use egui_plot::{Line, Plot, PlotPoints};
 use crate::{
     beam_and_tracker::{Beam, Tracker, beam_rigidity},
     magnet::MagnetGeometry,
-    MU0,
 };
 
 // ============================================================
