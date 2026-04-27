@@ -259,7 +259,7 @@ impl Tracker {
         let k_estimate = 1.0 / (required_focal_length * geo.l_mag);
 
         // k = g / Brho  =>  g = k * Brho
-        let g_estimate = k_estimate * beam_rigidity(1.0); 
+        let g_estimate = k_estimate * beam_rigidity(1.0);
         // g = (2 * B_pole) / r_gap  =>  B_pole = (g * r_gap) / 2
         let b_pole_estimate = (g_estimate * geo.r_gap) / 2.0;
 
