@@ -211,7 +211,7 @@ impl Tracker {
         let mut learning_rate = 5.0e9;
         let eps = 10.0; // Finite difference nudge
 
-        for i in 0..1000 {
+        for i in 0..500 {
             // 1. Calculate Base Cost
             let (base_asym, base_size) = Tracker::get_residuals_from_mmf(mmf1, mmf2, beam, geo);
             let cost_base = base_asym.powi(2) + base_size.powi(2);
