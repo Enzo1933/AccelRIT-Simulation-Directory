@@ -5,7 +5,10 @@ use nalgebra::{Matrix2, SMatrix, matrix, vector};
 use std::fs::File;
 use std::io::Write;
 
-use crate::{C_TM, PROTON_MASS, magnet::MagnetGeometry};
+use crate::{
+    C_TM, PROTON_MASS,
+    magnet::{self, MagnetGeometry},
+};
 
 /// Calculates the beam rigidity (B_rho)
 /// Dimensions: T*m
@@ -127,17 +130,23 @@ impl Tracker {
         let x0 = beam.x0;
         let xp0 = beam.xp0;
 
+        let q1_end = L_mag_m;
+        let q2_start = q1_end + gap_m;
+        let q2_end = q2_start + L_mag_m;
+        let q3_start = q2_end + gap_m;
+        let q3_end = q3_start + L_mag_m;
+
         let Brho = beam_rigidity(energy_MeV);
         let total_length = (3.0 * L_mag_m) + (2.0 * gap_m) + drift_m;
 
         // TODO: Implement enge multiplier
         let regions = [
-            ("quad", g1, L_mag_m),   // Q1
-            ("drift", 0.0, gap_m),   // Gap 1
-            ("quad", -g2, L_mag_m),  // Q2
-            ("drift", 0.0, gap_m),   // Gap 2
-            ("quad", g1, L_mag_m),   // Q3 (Must match Q1 polarity)
-            ("drift", 0.0, drift_m), // Final Drift to target
+            ("quad", g1, L_mag_m, 0.0, L_mag_m),
+            ("drift", 0.0, gap_m, 0.0, 0.0),
+            ("quad", -g2, L_mag_m, q2_start, q2_end),
+            ("drift", 0.0, gap_m, 0.0, 0.0),
+            ("quad", g1, L_mag_m, q3_start, q3_end),
+            ("drift", 0.0, drift_m, 0.0, 0.0),
         ];
 
         let mut x = vec![x0];
@@ -147,13 +156,19 @@ impl Tracker {
         let mut x_state = vector![x0, xp0];
         let mut y_state = vector![x0, xp0];
 
-        for (r, g, length) in regions {
+        for (r, g, length, z_entry, z_exit) in regions {
             let n = usize::max((n_steps as f64 * length / total_length) as usize, 4);
             let dz = length / n as f64;
-
+            
             for _ in 0..n {
+                let z_current = z.last().unwrap() + dz;
+
                 let (Mx, My) = match r {
-                    "quad" => quad_transfer_matrix(g, dz, Brho),
+                    "quad" => quad_transfer_matrix(
+                        geo.effective_gradient(g, z_current, z_entry, z_exit),
+                        dz,
+                        Brho,
+                    ),
                     _ => (drift_matrix(dz), drift_matrix(dz)),
                 };
 
@@ -174,12 +189,6 @@ impl Tracker {
 
         let x_xover = find_crossovers(&x, &z);
         let y_xover = find_crossovers(&y, &z);
-
-        let q1_end = L_mag_m;
-        let q2_start = q1_end + gap_m;
-        let q2_end = q2_start + L_mag_m;
-        let q3_start = q2_end + gap_m;
-        let q3_end = q3_start + L_mag_m;
 
         Ok(Tracker {
             x,

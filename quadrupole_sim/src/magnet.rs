@@ -103,12 +103,7 @@ impl MagnetGeometry {
 
         // Solve using the Quadratic Formula
         let discriminant = b_coeff.powi(2) - 4.0 * a * c;
-
-        if discriminant < 0.0 {
-            return self.b_sat;
-        }
-
-        let final_b_iron = (-b_coeff + discriminant.sqrt()) / (2.0 * a);
+        let final_b_iron = ((-b_coeff - discriminant.sqrt()) / (2.0 * a)).clamp(0.0, self.b_sat);
 
         // Flux Divider Rule
         let phi_total = final_b_iron * self.a_iron;
@@ -127,17 +122,53 @@ impl MagnetGeometry {
 
     /// The enge multiplier function f(z)
     /// G(z) = G_0 * f(z)
-    /// Params: z = Current z, z_0 = Effective edge 
+    /// Params: z = Current z, z_0 = Effective edge
     pub fn enge_multiplier(&self, z: f64, z_0: f64) -> f64 {
-        let a0 = 0.5;
-        let a1 = 1.0;
-        let a2 = 0.0;
-        let a3 = 0.1;
-        let a4 = 0.0;
-        let a5 = 0.0;
+        let a0 = 0.478959;
+        let a1 = 1.911289;
+        let a2 = -1.185953;
+        let a3 = 1.630554;
+        let a4 = -1.082657;
+        let a5 = 0.317591;
 
-        let m = (z - z_0) / (self.r_gap); 
+        let m = (z - z_0) / (self.r_gap);
 
-        1.0 / (1.0 + a0 + a1*m + a2*m.powf(2.0) + a3*m.powf(3.0) + a4*m.powf(4.0) + a5*m.powf(5.0)) 
+        1.0 / (1.0
+            + (a0
+                + a1 * m
+                + a2 * m.powf(2.0)
+                + a3 * m.powf(3.0)
+                + a4 * m.powf(4.0)
+                + a5 * m.powf(5.0))
+            .exp())
+    }
+
+    /// Returns effective gradient at position z accounting for fringe fields
+    pub fn effective_gradient(&self, g0: f64, z: f64, z_entry: f64, z_exit: f64) -> f64 {
+        // Entry fringe: field rises from 0 to g0
+        let f_entry = self.enge_multiplier(z, z_entry);
+
+        // Exit fringe: field falls from g0 to 0
+        // Flip sign of argument - mirror image of entry
+        let f_exit = self.enge_multiplier(-z, -z_exit);
+
+        // Combined: inside magnet both ≈ 1, outside both ≈ 0
+        g0 * f_entry * f_exit
+    }
+
+    /// Effective magnetic length — integral of f(z) dz
+    /// Numerically integrate the Enge function over a wide range
+    pub fn effective_length(&self, z_0: f64) -> f64 {
+        let z_min = z_0 - 5.0 * self.r_gap;
+        let z_max = z_0 + 5.0 * self.r_gap;
+        let n = 10000;
+        let dz = (z_max - z_min) / n as f64;
+
+        (0..n)
+            .map(|i| {
+                let z = z_min + i as f64 * dz;
+                self.enge_multiplier(z, z_0) * dz
+            })
+            .sum()
     }
 }
