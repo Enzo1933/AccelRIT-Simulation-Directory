@@ -291,7 +291,13 @@ impl Tracker {
         // residual 0: x/y asymmetry        → drives mmf1/mmf2 ratio
         // residual 1: average spot size    → drives overall MMF scale
         let avg = (t.x_f.abs() + t.y_f.abs()) / 2.0;
-        (t.x_f - t.y_f, avg - target_spot)
+        
+        // Replace the return of get_residuals_from_mmf
+        let asymmetry_error = (t.x_f.abs() - t.y_f.abs()).powi(2);
+        let size_error = (avg - target_spot).powi(2);
+
+        // Return squared values to provide a steep optimization 'bowl'
+        (asymmetry_error, size_error)
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
