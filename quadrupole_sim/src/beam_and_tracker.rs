@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use anyhow::{Ok, Result};
-use nalgebra::{Matrix2, matrix, vector};
+use nalgebra::{Matrix2, SMatrix, matrix, vector};
 use std::fs::File;
 use std::io::Write;
 
@@ -21,7 +21,7 @@ fn quad_transfer_matrix(
     g: f64,     // Field gradient
     L: f64,     // Effective length
     B_rho: f64, // The beam rigidity
-) -> (Matrix2<f64>, Matrix2<f64>) {
+) -> (SMatrix<f64, 2, 2>, SMatrix<f64, 2, 2>) {
     let k = g / B_rho; // Focusing strength
     let kr = k.abs().sqrt();
 
