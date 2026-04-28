@@ -50,7 +50,7 @@ impl MagnetGeometry {
     }
 
     /// Calculates the effective relative permeability using the Froelich-Kennelly model.
-    fn froelich_kennelly_mu(&self, b_field: f64) -> f64 {
+    fn frohlich_kennelly_mu(&self, b_field: f64) -> f64 {
         let b_abs = b_field.abs();
 
         if b_abs >= self.b_sat {
@@ -64,7 +64,7 @@ impl MagnetGeometry {
     /// Solves for the fluxes
     pub fn solve_fluxes(&self, b_field: f64, mmf: f64) -> (f64, f64, f64) {
         // Find the effective mu and the reluctances
-        let mu_eff = self.froelich_kennelly_mu(b_field);
+        let mu_eff = self.frohlich_kennelly_mu(b_field);
         let (r_gap, r_leak, r_iron) = self.calculate_reluctances(mu_eff);
 
         // Convert to permeance to get the load reluctance

@@ -208,16 +208,16 @@ impl Tracker {
         // The "Learning Rate" controls how big of a step to take.
         // The cost function outputs tiny numbers (meters squared),
         // and MMF is huge (Amp-turns), this needs to be a large multiplier.
-        let mut learning_rate = 5.0e9;
-        let eps = 10.0; // Finite difference nudge
+        let mut learning_rate = 5.0e10;
+        let eps = 100.0; // Finite difference nudge
 
-        for i in 0..500 {
+        for i in 0..1000 {
             // 1. Calculate Base Cost
             let (base_asym, base_size) = Tracker::get_residuals_from_mmf(mmf1, mmf2, beam, geo);
             let cost_base = base_asym.powi(2) + base_size.powi(2);
 
             // Convergence Check
-            if cost_base < 1e-12 {
+            if cost_base < 1e-6 {
                 println!("Gradient Descent converged in {} iterations!", i);
                 return Some((mmf1, mmf2));
             }
@@ -237,9 +237,11 @@ impl Tracker {
             mmf2 -= learning_rate * dcost_dmmf2;
 
             // Adaptive Learning Rate (Slow down as you get closer to the bottom)
-            if i % 100 == 0 {
-                println!("Iter {i:3} | MMF1: {mmf1:.1}, MMF2: {mmf2:.1} | Cost: {cost_base:.2e}");
-                learning_rate *= 0.9; // Shrink the step size slightly over time for stability
+            if i % 50 == 0 {
+                println!(
+                    "Iter {i:3} | MMF1: {mmf1:.1}, MMF2: {mmf2:.1} | Cost: {cost_n1:.2e}, {cost_n2:.2e}"
+                );
+                learning_rate *= 0.5; // Shrink the step size slightly over time for stability
             }
         }
 
@@ -294,7 +296,7 @@ impl Tracker {
         let target_spot = 0.00001;
 
         let t = Self::new(beam, geo, g1, g2, 50).unwrap();
-        // residual 0: x/y asymmetry       → drives mmf1/mmf2 ratio
+        // residual 0: x/y asymmetry        → drives mmf1/mmf2 ratio
         // residual 1: average spot size    → drives overall MMF scale
         let avg = (t.x_f + t.y_f) / 2.0;
         (t.x_f - t.y_f, avg - target_spot)
