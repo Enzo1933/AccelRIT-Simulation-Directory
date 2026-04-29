@@ -25,6 +25,7 @@ pub struct QuadApp {
     a_iron_mm2: f64, // iron cross section mm²
     mu_i: f64,       // initial permeability
     b_sat: f64,      // saturation field [T]
+    gap: f64,        // Gap between magnets
 
     // ── Results ───────────────────────────────────────────────
     tracker: Option<Tracker>,
@@ -77,6 +78,7 @@ impl Default for QuadApp {
             a_iron_mm2: 4000.0,
             mu_i: 2000.0,
             b_sat: 1.5,
+            gap: 4.0,
 
             tracker: None,
             mmf1: None,
@@ -211,6 +213,10 @@ impl QuadApp {
 
                 ui.label("B_sat (T)");
                 ui.add(egui::Slider::new(&mut self.b_sat, 0.5..=2.5).step_by(0.05));
+                ui.end_row();
+
+                ui.label("Inter-magnet Gap(in)");
+                ui.add(egui::Slider::new(&mut self.gap, 1.0..=100.0).step_by(0.1));
                 ui.end_row();
             });
 
@@ -750,6 +756,7 @@ impl QuadApp {
             self.a_iron_mm2 * 1e-6,
             self.mu_i,
             self.b_sat,
+            self.gap,
         )
     }
 

@@ -2,6 +2,7 @@
 mod beam_and_tracker;
 mod gui;
 mod magnet;
+mod math_methods;
 
 /// Constants in terms of Natural Units
 const PROTON_MASS: f64 = 938.3; // The mass of a proton in MeV/c^2

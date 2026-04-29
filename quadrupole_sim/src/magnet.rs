@@ -3,44 +3,47 @@ use std::f64::consts::PI;
 use crate::MU0;
 
 pub struct MagnetGeometry {
-    pub r_gap: f64,  // Radius of the beam pipe (m)
+    pub bore: f64,   // Radius of the beam pipe (m)
     pub l_mag: f64,  // Physical length of the magnet (m)
     pub w_pole: f64, // Width of the pole tip face (m)
     pub l_iron: f64, // Average path length through the iron yoke (m)
     pub a_iron: f64, // Average cross-sectional area of the iron (m^2)
     pub mu_i: f64,   // The initial permeability
     pub b_sat: f64,  // The magnetic saturation
+    pub gap: f64,    // The gap between magnets
 }
 
 impl MagnetGeometry {
     /// Constructs a new magnet geometry
     pub fn new(
-        r_gap: f64,
+        bore: f64,
         l_mag: f64,
         w_pole: f64,
         l_iron: f64,
         a_iron: f64,
         mu_i: f64,
         b_sat: f64,
+        gap: f64,
     ) -> Self {
         Self {
-            r_gap,
+            bore,
             l_mag,
             w_pole,
             l_iron,
             a_iron,
             mu_i,
             b_sat,
+            gap,
         }
     }
 
     /// Calculates the reluctances of the nodes in the magnet
     pub fn calculate_reluctances(&self, mu_eff: f64) -> (f64, f64, f64) {
         // Reluctance of the gap
-        let R_gap = self.r_gap / (MU0 * self.l_mag * self.w_pole);
+        let R_gap = 2.0 * self.bore / (MU0 * self.l_mag * self.w_pole);
 
         // Use the permeance of the leak to calculate the reluctance of the leaking flux
-        let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.r_gap).ln() / PI;
+        let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.bore).ln() / PI;
         let R_leak = 1.0 / P_leak;
 
         // The reluctance of the iron
@@ -97,9 +100,9 @@ impl MagnetGeometry {
         let r_load = (r_gap * r_leak) / (r_gap + r_leak);
 
         // Setup the Quadratic Equation coefficients (a*B^2 + b*B + c = 0)
-        let a = r_load / self.b_sat;
-        let b_coeff = -(r_load + r_iron_linear + (mmf / (self.a_iron * self.b_sat)));
-        let c = mmf / self.a_iron;
+        let a = self.a_iron * r_load / self.b_sat;
+        let b_coeff = -(self.a_iron * (r_load + r_iron_linear) + mmf / self.b_sat);
+        let c = mmf;
 
         // Solve using the Quadratic Formula
         let discriminant = b_coeff.powi(2) - 4.0 * a * c;
@@ -117,7 +120,7 @@ impl MagnetGeometry {
     /// Dimensions: T/m
     pub fn field_gradient(&self, mmf: f64) -> f64 {
         let b = self.solve_b_pole(mmf);
-        (2.0 * b) / self.r_gap
+        (2.0 * b) / self.bore
     }
 
     /// The enge multiplier function f(z)
@@ -125,13 +128,13 @@ impl MagnetGeometry {
     /// Params: z = Current z, z_0 = Effective edge
     pub fn enge_multiplier(&self, z: f64, z_0: f64) -> f64 {
         let a0 = 0.478959;
-        let a1 = 1.911289;
+        let a1 = 4.533229;
         let a2 = -1.185953;
         let a3 = 1.630554;
         let a4 = -1.082657;
         let a5 = 0.317591;
 
-        let m = (z - z_0) / (self.r_gap);
+        let m = (z - z_0) / (self.bore);
 
         1.0 / (1.0
             + (a0
@@ -143,31 +146,40 @@ impl MagnetGeometry {
             .exp())
     }
 
-    /// Returns effective gradient at position z accounting for fringe fields
-    pub fn effective_gradient(&self, g0: f64, z: f64, z_entry: f64, z_exit: f64) -> f64 {
-        // Entry fringe: field rises from 0 to g0
+    /// Returns raw gradient at position z accounting for fringe fields
+    pub fn effective_gradient(
+        &self,
+        g0: f64,
+        z: f64,
+        z_entry: f64,
+        z_exit: f64,
+        L_eff: f64,
+    ) -> f64 {
         let f_entry = self.enge_multiplier(z, z_entry);
+        let f_exit = self.enge_multiplier(-(z - z_exit), 0.0);
 
-        // Exit fringe: field falls from g0 to 0
-        // Flip sign of argument - mirror image of entry
-        let f_exit = self.enge_multiplier(-z, -z_exit);
+        let f = f_entry * f_exit;
+        let scale = self.l_mag / L_eff;
 
-        // Combined: inside magnet both ≈ 1, outside both ≈ 0
-        g0 * f_entry * f_exit
+        g0 * f * scale
     }
 
     /// Effective magnetic length — integral of f(z) dz
     /// Numerically integrate the Enge function over a wide range
-    pub fn _effective_length(&self, z_0: f64) -> f64 {
-        let z_min = z_0 - 5.0 * self.r_gap;
-        let z_max = z_0 + 5.0 * self.r_gap;
-        let n = 10000;
+    pub fn effective_length(&self, z_entry: f64, z_exit: f64) -> f64 {
+        let n = 500;
+        let z_min = z_entry - 5.0 * self.bore;
+        let z_max = z_exit + 5.0 * self.bore;
         let dz = (z_max - z_min) / n as f64;
 
         (0..n)
             .map(|i| {
                 let z = z_min + i as f64 * dz;
-                self.enge_multiplier(z, z_0) * dz
+
+                let f_entry = self.enge_multiplier(z, z_entry);
+                let f_exit = self.enge_multiplier(-z, -z_exit);
+
+                (f_entry * f_exit) * dz
             })
             .sum()
     }

@@ -5,7 +5,11 @@ use nalgebra::{Matrix2, SMatrix, matrix, vector};
 use std::fs::File;
 use std::io::Write;
 
-use crate::{C_TM, PROTON_MASS, magnet::MagnetGeometry};
+use crate::{
+    C_TM, PROTON_MASS,
+    magnet::MagnetGeometry,
+    math_methods::{rk4_step, x_prime, y_prime},
+};
 
 /// Calculates the beam rigidity (B_rho)
 /// Dimensions: T*m
@@ -15,6 +19,8 @@ pub fn beam_rigidity(ke_mev: f64) -> f64 {
 
     p / C_TM
 }
+
+/// Runge-Kutta
 
 /// Calculates the quadrupole transfer matrix
 fn quad_transfer_matrix(
@@ -121,7 +127,7 @@ impl Tracker {
         n_steps: usize,
     ) -> Result<Tracker> {
         let L_mag_m: f64 = geo.l_mag;
-        let gap_m: f64 = geo.r_gap;
+        let gap_m: f64 = geo.gap;
         let drift_m: f64 = beam.drift_m;
         let energy_MeV = beam.energy_MeV;
         let x0 = beam.x0;
@@ -140,13 +146,17 @@ impl Tracker {
         let total_length = (3.0 * L_mag_m) + (2.0 * gap_m) + drift_m;
 
         // TODO: Implement enge multiplier
+        let L_eff_q1 = geo.effective_length(q1_start, q1_end);
+        let L_eff_q2 = geo.effective_length(q2_start, q2_end);
+        let L_eff_q3 = geo.effective_length(q3_start, q3_end);
+
         let regions = [
-            ("quad", g1, L_mag_m, q1_start, q1_end),
-            ("drift", 0.0, gap_m, 0.0, 0.0),
-            ("quad", -g2, L_mag_m, q2_start, q2_end),
-            ("drift", 0.0, gap_m, 0.0, 0.0),
-            ("quad", g1, L_mag_m, q3_start, q3_end),
-            ("drift", 0.0, drift_m, 0.0, 0.0),
+            ("quad", g1, L_mag_m, q1_start, q1_end, L_eff_q1),
+            ("drift", 0.0, gap_m, 0.0, 0.0, 0.0),
+            ("quad", -g2, L_mag_m, q2_start, q2_end, L_eff_q2),
+            ("drift", 0.0, gap_m, 0.0, 0.0, 0.0),
+            ("quad", g1, L_mag_m, q3_start, q3_end, L_eff_q3),
+            ("drift", 0.0, drift_m, 0.0, 0.0, 0.0),
         ];
 
         let mut x = vec![x0];
@@ -156,26 +166,29 @@ impl Tracker {
         let mut x_state = vector![x0, xp0];
         let mut y_state = vector![x0, xp0];
 
-        for (r, g, length, z_entry, z_exit) in regions {
+        for (r, g, length, z_entry, z_exit, L_eff) in regions {
             let n = usize::max((n_steps as f64 * length / total_length) as usize, 4);
             let dz = length / n as f64;
 
             for _ in 0..n {
-                let z_current = z.last().unwrap() + dz;
+                let z_curr = *z.last().unwrap();
 
-                let (Mx, My) = match r {
-                    "quad" => quad_transfer_matrix(
-                        geo.effective_gradient(g, z_current, z_entry, z_exit),
-                        dz,
-                        Brho,
-                    ),
-                    _ => (drift_matrix(dz), drift_matrix(dz)),
-                };
+                match r {
+                    "quad" => {
+                        let g_eff = geo.effective_gradient(g, z_curr, z_entry, z_exit, L_eff);
+                        let k = g_eff / Brho;
 
-                x_state = Mx * &x_state;
-                y_state = My * &y_state;
+                        x_state = rk4_step(x_state, z_curr, dz, |_z, s| x_prime(s, k));
+                        y_state = rk4_step(y_state, z_curr, dz, |_z, s| y_prime(s, k));
+                    }
+                    _ => {
+                        // Drift — k = 0, straight line
+                        x_state = rk4_step(x_state, z_curr, dz, |_z, s| x_prime(s, 0.0));
+                        y_state = rk4_step(y_state, z_curr, dz, |_z, s| y_prime(s, 0.0));
+                    }
+                }
 
-                z.push(z_current + dz);
+                z.push(z_curr + dz);
                 x.push(x_state[0]);
                 y.push(y_state[0]);
             }
@@ -216,13 +229,18 @@ impl Tracker {
         // The "Learning Rate" controls how big of a step to take.
         // The cost function outputs tiny numbers (meters squared),
         // and MMF is huge (Amp-turns), this needs to be a large multiplier.
-        let mut learning_rate = 5.0e10;
-        let eps = 100.0; // Finite difference nudge
+        let mut learning_rate = 1.0e6;
+        let eps = 500.0; // Finite difference nudge
 
         for i in 0..1000 {
             // 1. Calculate Base Cost
             let (base_asym, base_size) = Tracker::get_residuals_from_mmf(mmf1, mmf2, beam, geo);
             let cost_base = base_asym.powi(2) + base_size.powi(2);
+
+            if cost_base < 1e-3 {
+                println!("Converged at iter {i}");
+                break;
+            }
 
             // Calculate Gradient (Slope) with respect to MMF1
             let (n1_asym, n1_size) = Tracker::get_residuals_from_mmf(mmf1 + eps, mmf2, beam, geo);
@@ -238,12 +256,12 @@ impl Tracker {
             mmf1 -= learning_rate * dcost_dmmf1;
             mmf2 -= learning_rate * dcost_dmmf2;
 
-            // Adaptive Learning Rate (Slow down as you get closer to the bottom)
-            if i % 50 == 0 {
+            // // Adaptive Learning Rate (Slow down as you get closer to the bottom)
+            if i % 100 == 0 {
                 println!(
                     "Iter {i:3} | MMF1: {mmf1:.1}, MMF2: {mmf2:.1} | Cost: {cost_n1:.2e}, {cost_n2:.2e}"
                 );
-                learning_rate *= 0.5; // Shrink the step size slightly over time for stability
+                learning_rate *= 0.75; // Shrink the step size slightly over time for stability
             }
         }
 
@@ -263,9 +281,9 @@ impl Tracker {
         let k_estimate = 1.0 / (required_focal_length * geo.l_mag);
 
         // k = g / Brho  =>  g = k * Brho
-        let g_estimate = k_estimate * beam_rigidity(1.0);
-        // g = (2 * B_pole) / r_gap  =>  B_pole = (g * r_gap) / 2
-        let b_pole_estimate = (g_estimate * geo.r_gap) / 2.0;
+        let g_estimate = k_estimate * beam_rigidity(beam.energy_MeV);
+        // g = (2 * B_pole) / r  =>  B_pole = (g * r) / 2
+        let b_pole_estimate = (g_estimate * geo.bore) / 2.0;
 
         // MMF = Flux * Reluctance
         let (r_gap, r_leak, r_iron) = geo.calculate_reluctances(geo.mu_i);
@@ -295,19 +313,15 @@ impl Tracker {
     ) -> (f64, f64) {
         let g1 = geo.field_gradient(mmf1);
         let g2 = geo.field_gradient(mmf2);
-        let target_spot = beam.x0*0.1;
+        let target_spot = beam.x0 * 0.1;
 
-        let t = Self::new(beam, geo, g1, g2, 1000).unwrap();
+        let t = Self::new(beam, geo, g1, g2, 75).unwrap();
         // residual 0: x/y asymmetry        → drives mmf1/mmf2 ratio
         // residual 1: average spot size    → drives overall MMF scale
         let avg = (t.x_f.abs() + t.y_f.abs()) / 2.0;
 
-        // Replace the return of get_residuals_from_mmf
-        let asymmetry_error = (t.x_f.abs() - t.y_f.abs()).powi(2);
-        let size_error = (avg - target_spot).powi(2);
-
         // Return squared values to provide a steep optimization 'bowl'
-        (asymmetry_error, size_error)
+        (t.x_f - t.y_f, avg - target_spot)
     }
 
     /// Exports the optimized profile as a CSV for IBSimu import.
