@@ -115,7 +115,7 @@ impl eframe::App for QuadApp {
         // ── Top bar ──────────────────────────────────────────
         egui::TopBottomPanel::top("title").show(ctx, |ui| {
             ui.add_space(4.0);
-            ui.heading("Quadrupole Triplet Design Tool — 1 MeV Proton Beam");
+            ui.heading("Quadrupole Optimization Engine — 1 MeV Proton Beam");
             ui.add_space(4.0);
         });
 
@@ -169,11 +169,11 @@ impl QuadApp {
                 ui.end_row();
 
                 ui.label("x₀ (mm)");
-                ui.add(egui::Slider::new(&mut self.x0_mm, 0.5..=20.0).step_by(0.1));
+                ui.add(egui::Slider::new(&mut self.x0_mm, 0.5..=20000.0).step_by(0.1));
                 ui.end_row();
 
                 ui.label("x′₀ (mrad)");
-                ui.add(egui::Slider::new(&mut self.xp0_mrad, 1.0..=100.0).step_by(1.0));
+                ui.add(egui::Slider::new(&mut self.xp0_mrad, 1.0..=20000.0).step_by(1.0));
                 ui.end_row();
             });
 
@@ -828,13 +828,13 @@ impl QuadApp {
 pub fn launch_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Quadrupole Triplet Design Tool")
+            .with_title("Quadrupole Optimization Engine")
             .with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Quadrupole Triplet Design Tool",
+        "Quadrupole Optimization Engine",
         options,
         Box::new(|_cc| Box::new(QuadApp::default())),
     )
