@@ -1,7 +1,7 @@
 #![allow(non_snake_case)]
 
 use anyhow::{Ok, Result};
-use nalgebra::{Matrix2, SMatrix, matrix, vector};
+use nalgebra::vector;
 use std::fs::File;
 use std::io::Write;
 
