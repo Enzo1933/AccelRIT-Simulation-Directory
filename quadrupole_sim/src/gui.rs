@@ -756,7 +756,7 @@ impl QuadApp {
             self.a_iron_mm2 * 1e-6,
             self.mu_i,
             self.b_sat,
-            self.gap*0.0254,
+            self.gap * 0.0254,
         )
     }
 
