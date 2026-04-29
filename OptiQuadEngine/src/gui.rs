@@ -188,7 +188,7 @@ impl QuadApp {
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
                 ui.label("Bore radius (mm)");
-                ui.add(egui::Slider::new(&mut self.r_gap_mm, 10.0..=150.0).step_by(1.0));
+                ui.add(egui::Slider::new(&mut self.r_gap_mm, 10.0..=15000.0).step_by(1.0));
                 ui.end_row();
 
                 ui.label("Magnet length (in)");
@@ -196,11 +196,11 @@ impl QuadApp {
                 ui.end_row();
 
                 ui.label("Pole width (mm)");
-                ui.add(egui::Slider::new(&mut self.w_pole_mm, 10.0..=200.0).step_by(1.0));
+                ui.add(egui::Slider::new(&mut self.w_pole_mm, 10.0..=2000.0).step_by(1.0));
                 ui.end_row();
 
                 ui.label("Iron path length (mm)");
-                ui.add(egui::Slider::new(&mut self.l_iron_mm, 50.0..=1000.0).step_by(5.0));
+                ui.add(egui::Slider::new(&mut self.l_iron_mm, 50.0..=10000.0).step_by(5.0));
                 ui.end_row();
 
                 ui.label("Iron area (mm²)");
