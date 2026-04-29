@@ -3,14 +3,14 @@ use std::f64::consts::PI;
 use crate::MU0;
 
 pub struct MagnetGeometry {
-    pub bore: f64,   // Radius of the beam pipe (m)
-    pub l_mag: f64,  // Physical length of the magnet (m)
-    pub w_pole: f64, // Width of the pole tip face (m)
-    pub l_iron: f64, // Average path length through the iron yoke (m)
-    pub a_iron: f64, // Average cross-sectional area of the iron (m^2)
-    pub mu_i: f64,   // The initial permeability
-    pub b_sat: f64,  // The magnetic saturation
-    pub gap: f64,    // The gap between magnets
+    pub bore: f64,             // Radius of the beam pipe (m)
+    pub l_mag: f64,            // Physical length of the magnet (m)
+    pub w_pole: f64,           // Width of the pole tip face (m)
+    pub l_iron: f64,           // Average path length through the iron yoke (m)
+    pub a_iron: f64,           // Average cross-sectional area of the iron (m^2)
+    pub mu_i: f64,             // The initial permeability
+    pub b_sat: f64,            // The magnetic saturation
+    pub inter_magnet_gap: f64, // The gap between magnets
 }
 
 impl MagnetGeometry {
@@ -23,7 +23,7 @@ impl MagnetGeometry {
         a_iron: f64,
         mu_i: f64,
         b_sat: f64,
-        gap: f64,
+        inter_magnet_gap: f64,
     ) -> Self {
         Self {
             bore,
@@ -33,7 +33,7 @@ impl MagnetGeometry {
             a_iron,
             mu_i,
             b_sat,
-            gap,
+            inter_magnet_gap,
         }
     }
 
@@ -42,6 +42,9 @@ impl MagnetGeometry {
         // Reluctance of the gap
         let R_gap = 2.0 * self.bore / (MU0 * self.l_mag * self.w_pole);
 
+        let arg = 2.0 * self.w_pole / (2.0 * self.bore);
+        let fringing_factor = 1.0 + (2.0 * self.bore / self.a_iron.sqrt()) * arg.ln();
+
         // Use the permeance of the leak to calculate the reluctance of the leaking flux
         let P_leak = MU0 * self.l_mag * (1.0 + self.w_pole / self.bore).ln() / PI;
         let R_leak = 1.0 / P_leak;
@@ -49,7 +52,7 @@ impl MagnetGeometry {
         // The reluctance of the iron
         let R_iron = self.l_iron / (MU0 * mu_eff * self.a_iron);
 
-        (R_gap, R_leak, R_iron)
+        (R_gap / fringing_factor, R_leak, R_iron)
     }
 
     /// Calculates the effective relative permeability using the Froelich-Kennelly model.
@@ -106,6 +109,11 @@ impl MagnetGeometry {
 
         // Solve using the Quadratic Formula
         let discriminant = b_coeff.powi(2) - 4.0 * a * c;
+
+        if discriminant < 0.0 {
+            panic!("Fatal: Negative discriminant when running solving for B pole")
+        }
+
         let final_b_iron = ((-b_coeff - discriminant.sqrt()) / (2.0 * a)).clamp(0.0, self.b_sat);
 
         // Flux Divider Rule
@@ -127,22 +135,24 @@ impl MagnetGeometry {
     /// G(z) = G_0 * f(z)
     /// Params: z = Current z, z_0 = Effective edge
     pub fn enge_multiplier(&self, z: f64, z_0: f64) -> f64 {
-        let a0 = 0.478959;
-        let a1 = 1.911289;
-        let a2 = -1.185953;
-        let a3 = 1.630554;
-        let a4 = -1.082657;
-        let a5 = 0.317591;
+        let a = [
+            0.2965,  // a0: Constant offset
+            2.2375,  // a1: Primary linear slope
+            -0.0153, // a2: Curvature at the corner
+            0.8847,  // a3: Higher order correction
+            -0.2981, // a4: Tail smoothing
+            0.0462,  // a5: Asymptotic damping
+        ];
 
-        let m = (z - z_0) / (self.bore);
+        let m = (z - z_0) / (2.0 * self.bore);
 
         1.0 / (1.0
-            + (a0
-                + a1 * m
-                + a2 * m.powf(2.0)
-                + a3 * m.powf(3.0)
-                + a4 * m.powf(4.0)
-                + a5 * m.powf(5.0))
+            + (a[0]
+                + a[1] * m
+                + a[2] * m.powf(2.0)
+                + a[3] * m.powf(3.0)
+                + a[4] * m.powf(4.0)
+                + a[5] * m.powf(5.0))
             .exp())
     }
 
@@ -167,7 +177,7 @@ impl MagnetGeometry {
     /// Effective magnetic length — integral of f(z) dz
     /// Numerically integrate the Enge function over a wide range
     pub fn effective_length(&self, z_entry: f64, z_exit: f64) -> f64 {
-        let n = 600;
+        let n = 500;
         let z_min = z_entry - 5.0 * self.bore;
         let z_max = z_exit + 5.0 * self.bore;
         let dz = (z_max - z_min) / n as f64;

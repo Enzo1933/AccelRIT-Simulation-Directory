@@ -80,7 +80,7 @@ impl Tracker {
         n_steps: usize,
     ) -> Result<Tracker> {
         let L_mag_m: f64 = geo.l_mag;
-        let gap_m: f64 = geo.gap;
+        let gap_m: f64 = geo.inter_magnet_gap;
         let drift_m: f64 = beam.drift_m;
         let energy_MeV = beam.energy_MeV;
         let x0 = beam.x0;
@@ -174,21 +174,21 @@ impl Tracker {
         })
     }
 
-    /// Optimize magneto-motive force 
+    /// Optimize magneto-motive force
     /// TODO: Fix this stuff
     pub fn optimize_mmf(beam: &Beam, geo: &MagnetGeometry) -> Option<(f64, f64)> {
         let mmf = Self::calculate_realistic_guess(beam, geo);
         let mut mmf1 = mmf[0];
         let mut mmf2 = mmf[1];
 
-        let lambda = 0.1; // damping 
-        let max_iter = 200;
-        
+        // let lambda = 0.075; // damping
+        let max_iter = 250;
+
         for i in 0..max_iter {
             let r = get_residuals_from_mmf(mmf1, mmf2, beam, geo);
             let r1 = r[0];
             let r2 = r[1];
-            
+
             let cost = r1 * r1 + r2 * r2;
             println!("Iter {i:2} | MMF1: {mmf1:.1} MMF2: {mmf2:.1} | Cost: {cost:.3e}");
 
@@ -196,21 +196,28 @@ impl Tracker {
                 println!("Converged at iter {i}");
                 break;
             }
-            
-            let J = jacobian(mmf1, mmf2, beam, geo);
-            let det = J.determinant();
-            
-            if det.abs() < 1e-14 {
-                println!("Singular Jacobian at iter {i} — stopping");
-                break;
-            }
-            
-            let delta = (1.0/det) * J*r;
-            let delta_mmf1 = delta[0];
-            let delta_mmf2 = delta[1];
 
-            mmf1 = (mmf1 - lambda * delta_mmf1).clamp(100.0, 500_000.0);
-            mmf2 = (mmf2 - lambda * delta_mmf2).clamp(100.0, 500_000.0);
+            let j = jacobian(mmf1, mmf2, beam, geo);
+            let det = j.determinant();
+            if det.abs() < 1e-12 {
+                break; // Safety net
+            }
+
+            let inv_j = j.try_inverse().unwrap();
+            let mut delta = inv_j * r;
+
+            // Never allow a step larger than 20% of the current MMF.
+            // Stops the "teleportation" into saturation walls.
+            let max_step1 = mmf1 * 0.20;
+            let max_step2 = mmf2 * 0.20;
+
+            delta[0] = delta[0].clamp(-max_step1, max_step1);
+            delta[1] = delta[1].clamp(-max_step2, max_step2);
+
+            // 2. APPLY THE UPDATE (with a modest lambda damping, e.g., 0.5)
+            let lambda = 0.5;
+            mmf1 = (mmf1 - delta[0] * lambda).clamp(10.0, 250_000.0);
+            mmf2 = (mmf2 - delta[1] * lambda).clamp(10.0, 250_000.0);
         }
 
         let ratio = mmf2 / mmf1;

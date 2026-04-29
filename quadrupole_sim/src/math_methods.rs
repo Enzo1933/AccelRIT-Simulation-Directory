@@ -39,25 +39,33 @@ pub fn get_residuals_from_mmf(
 ) -> Vector2<f64> {
     let g1 = geo.field_gradient(mmf1);
     let g2 = geo.field_gradient(mmf2);
-    let target_spot = beam.x0 * 0.1;
 
+    // Track the beam using 75 steps (as in your original code)
     let t = Tracker::new(beam, geo, g1, g2, 75).unwrap();
-    // residual 0: x/y asymmetry        → drives mmf1/mmf2 ratio
-    // residual 1: average spot size    → drives overall MMF scale
-    let avg = (t.x_f.abs() + t.y_f.abs()) / 2.0;
 
-    vector![(t.x_f - t.y_f), (avg - target_spot)]
+    // Residual 0: The final X position (Aiming for 0.0)
+    // Residual 1: The final Y position (Aiming for 0.0)
+    // No absolute values. No averages. Just pure, differentiable physics.
+    vector![t.x_f, t.y_f]
 }
 
 pub fn jacobian(mmf1: f64, mmf2: f64, beam: &Beam, geo: &MagnetGeometry) -> SMatrix<f64, 2, 2> {
-    let eps = 50.0;
+    // Dynamically scale epsilon to be exactly 0.1% of the current MMF.
+    // The .max(10.0) ensures that if MMF gets very close to 0, we don't divide by zero.
+    let eps1 = (mmf1 * 0.001).abs().max(10.0);
+    let eps2 = (mmf2 * 0.001).abs().max(10.0);
 
     let r = get_residuals_from_mmf(mmf1, mmf2, beam, geo);
-    let r1 = get_residuals_from_mmf(mmf1 + eps, mmf2, beam, geo);
-    let r2 = get_residuals_from_mmf(mmf1, mmf2 + eps, beam, geo);
 
+    // Perturb MMF1
+    let r1 = get_residuals_from_mmf(mmf1 + eps1, mmf2, beam, geo);
+
+    // Perturb MMF2
+    let r2 = get_residuals_from_mmf(mmf1, mmf2 + eps2, beam, geo);
+
+    // Calculate slopes (Partial Derivatives)
     matrix![
-        (r1[0] - r[0]) / eps, (r2[0] - r[0]) / eps;
-        (r1[1] - r[1]) / eps, (r2[1] - r[1]) / eps;
+        (r1[0] - r[0]) / eps1, (r2[0] - r[0]) / eps2;
+        (r1[1] - r[1]) / eps1, (r2[1] - r[1]) / eps2;
     ]
 }
