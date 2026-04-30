@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Write;
 
 use crate::{
-    C_TM, PROTON_MASS, beam::{Beam, beam_rigidity}, magnet::MagnetGeometry, math_methods::{get_residuals_from_mmf, jacobian, rk4_step, x_prime, y_prime}
+    beam::{Beam, beam_rigidity}, magnet::MagnetGeometry, math_methods::{get_residuals_from_mmf, jacobian, rk4_step, x_prime, y_prime}
 };
 
 fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
