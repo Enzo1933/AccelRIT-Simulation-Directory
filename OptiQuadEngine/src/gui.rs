@@ -2,9 +2,9 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
 use crate::{
-    tracker::{QuadTracker},
-    beam::{Beam, beam_rigidity},
+    beam::{Beam},
     magnet::MagnetGeometry,
+    tracker::QuadTracker,
 };
 
 // ============================================================

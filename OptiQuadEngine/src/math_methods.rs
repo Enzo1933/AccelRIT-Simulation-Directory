@@ -1,10 +1,6 @@
 use nalgebra::{SMatrix, Vector2, matrix, vector};
 
-use crate::{
-    tracker::{QuadTracker},
-    beam:: Beam,
-    magnet::MagnetGeometry,
-};
+use crate::{beam::Beam, magnet::MagnetGeometry, tracker::QuadTracker};
 
 pub fn x_prime(state: Vector2<f64>, k: f64) -> Vector2<f64> {
     vector![
@@ -67,4 +63,8 @@ pub fn jacobian(mmf1: f64, mmf2: f64, beam: &Beam, geo: &MagnetGeometry) -> SMat
         (r1[0] - r[0]) / eps1, (r2[0] - r[0]) / eps2;
         (r1[1] - r[1]) / eps1, (r2[1] - r[1]) / eps2;
     ]
+}
+
+pub fn sech(arg: f64) -> f64 {
+    1.0 / arg.cosh()
 }

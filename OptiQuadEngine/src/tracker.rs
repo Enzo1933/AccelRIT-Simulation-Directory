@@ -1,4 +1,5 @@
 #![allow(non_snake_case)]
+//! The comprehensive tracker file, housing each and every tracker structure in use by the engine itself
 
 use anyhow::{Ok, Result};
 use nalgebra::{Vector2, vector};
@@ -6,7 +7,10 @@ use std::fs::File;
 use std::io::Write;
 
 use crate::{
-    beam::{Beam, beam_rigidity}, magnet::MagnetGeometry, math_methods::{get_residuals_from_mmf, jacobian, rk4_step, x_prime, y_prime}
+    beam::{Beam},
+    einzel::EinzelGeometry,
+    magnet::MagnetGeometry,
+    math_methods::{get_residuals_from_mmf, jacobian, rk4_step, x_prime, y_prime},
 };
 
 fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
@@ -20,8 +24,7 @@ fn find_crossovers(arr: &[f64], z: &[f64]) -> Vec<f64> {
     crossovers
 }
 
-
-/// The envelope tracker struct
+/// The quadrupole region tracker struct
 pub struct QuadTracker {
     pub x: Vec<f64>,
     pub y: Vec<f64>,
@@ -53,7 +56,6 @@ impl QuadTracker {
         let L_mag_m: f64 = geo.l_mag;
         let gap_m: f64 = geo.inter_magnet_gap;
         let drift_m: f64 = beam.drift_m;
-        let energy_MeV = beam.energy_MeV;
         let x0 = beam.x0;
         let xp0 = beam.xp0;
 
@@ -66,7 +68,7 @@ impl QuadTracker {
         let q3_start = 2.0 * L_mag_m + 2.0 * gap_m;
         let q3_end = 3.0 * L_mag_m + 2.0 * gap_m;
 
-        let Brho = beam_rigidity(energy_MeV);
+        let Brho = beam.beam_rigidity();
         let total_length = (3.0 * L_mag_m) + (2.0 * gap_m) + drift_m;
 
         let L_eff_q1 = geo.effective_length(q1_start, q1_end);
@@ -270,5 +272,22 @@ impl QuadTracker {
         )?;
 
         Ok(())
+    }
+}
+
+/// The Einzel region tracker struct
+pub struct EinzelTracker {
+    pub z: Vec<f64>,       // Longitudinal position
+    pub e_field: Vec<f64>, // Extracted E-field (-V')
+    pub r_f: f64,          // Final radius at exit
+    pub r_prime_f: f64,    // Final divergence angle at exit
+}
+
+impl EinzelTracker {
+    /// Track beam through einzel triplet region
+    pub fn new(beam: &Beam, geo: &EinzelGeometry, n_steps: usize) {
+        let R0 = beam.x0 * geo.U_mid.powf(0.25); // Initial reduced radius, the Picht substitution
+        let Rp0 = 0.25 * R0 * geo.U_mid.powf(-0.75) * geo.e_field(0.0); // Initial reduced r'
+        let V0 = beam.energy_MeV; // The energy and voltage have the same magnitude
     }
 }
