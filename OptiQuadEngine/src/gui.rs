@@ -2,7 +2,7 @@ use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
 use crate::{
-    beam_and_tracker::{Beam, Tracker, beam_rigidity},
+    beam_and_tracker::{Beam, QuadTracker, beam_rigidity},
     magnet::MagnetGeometry,
 };
 
@@ -28,7 +28,7 @@ pub struct QuadApp {
     gap: f64,        // Gap between magnets
 
     // ── Results ───────────────────────────────────────────────
-    tracker: Option<Tracker>,
+    tracker: Option<QuadTracker>,
     mmf1: Option<f64>,
     mmf2: Option<f64>,
     g1: Option<f64>,
@@ -254,7 +254,7 @@ impl QuadApp {
             ui.horizontal(|ui| {
                 if ui.button("IBSimu CSV").clicked() {
                     let (beam, geo) = self.make_beam_and_geo();
-                    match Tracker::export_to_ibsimu(&beam, &geo) {
+                    match QuadTracker::export_to_ibsimu(&beam, &geo) {
                         std::result::Result::Ok(_) => {
                             self.status = "Exported beam_tracing.csv".into()
                         }
@@ -263,7 +263,7 @@ impl QuadApp {
                 }
                 if ui.button("FEMM Lookup").clicked() {
                     let (beam, geo) = self.make_beam_and_geo();
-                    match Tracker::export_femm_lookup(&beam, &geo) {
+                    match QuadTracker::export_femm_lookup(&beam, &geo) {
                         std::result::Result::Ok(_) => {
                             self.status = "Exported FEMM-Lookup.csv".into()
                         }
@@ -774,12 +774,12 @@ impl QuadApp {
         self.status = "Running optimizer...".into();
         let (beam, geo) = self.make_beam_and_geo();
 
-        match Tracker::optimize_mmf(&beam, &geo) {
+        match QuadTracker::optimize_mmf(&beam, &geo) {
             Some((mmf1, mmf2)) => {
                 let g1 = geo.field_gradient(mmf1);
                 let g2 = geo.field_gradient(mmf2);
 
-                match Tracker::new(&beam, &geo, g1, g2, 400) {
+                match QuadTracker::new(&beam, &geo, g1, g2, 400) {
                     std::result::Result::Ok(t) => {
                         // Flux results
                         let b1 = geo.solve_b_pole(mmf1);

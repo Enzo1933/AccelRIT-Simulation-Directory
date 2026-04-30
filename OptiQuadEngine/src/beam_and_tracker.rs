@@ -51,7 +51,7 @@ impl Beam {
 }
 
 /// The envelope tracker struct
-pub struct Tracker {
+pub struct QuadTracker {
     pub x: Vec<f64>,
     pub y: Vec<f64>,
     pub z: Vec<f64>,
@@ -69,7 +69,7 @@ pub struct Tracker {
     pub max_env_y: f64,
 }
 
-impl Tracker {
+impl QuadTracker {
     /// Track beam envelope through FDF triplet.
     /// Returns a Tracker data structure with z positions, x/y envelopes, region boundaries, crossovers, etc.
     pub fn new(
@@ -78,7 +78,7 @@ impl Tracker {
         g1: f64,
         g2: f64,
         n_steps: usize,
-    ) -> Result<Tracker> {
+    ) -> Result<QuadTracker> {
         let L_mag_m: f64 = geo.l_mag;
         let gap_m: f64 = geo.inter_magnet_gap;
         let drift_m: f64 = beam.drift_m;
@@ -155,7 +155,7 @@ impl Tracker {
         let x_xover = find_crossovers(&x, &z);
         let y_xover = find_crossovers(&y, &z);
 
-        Ok(Tracker {
+        Ok(QuadTracker {
             x,
             y,
             z,
@@ -267,7 +267,7 @@ impl Tracker {
 
         let g1 = geo.field_gradient(mmf1);
         let g2 = geo.field_gradient(mmf2);
-        let final_tracker = Tracker::new(beam, geo, g1, g2, 500)?;
+        let final_tracker = QuadTracker::new(beam, geo, g1, g2, 500)?;
 
         writeln!(file, "z,x_env,y_env")?;
         for i in 0..final_tracker.z.len() {

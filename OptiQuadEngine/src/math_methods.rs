@@ -1,7 +1,7 @@
 use nalgebra::{SMatrix, Vector2, matrix, vector};
 
 use crate::{
-    beam_and_tracker::{Beam, Tracker},
+    beam_and_tracker::{Beam, QuadTracker},
     magnet::MagnetGeometry,
 };
 
@@ -40,7 +40,7 @@ pub fn get_residuals_from_mmf(
     let g1 = geo.field_gradient(mmf1);
     let g2 = geo.field_gradient(mmf2);
 
-    let t = Tracker::new(beam, geo, g1, g2, 75).unwrap();
+    let t = QuadTracker::new(beam, geo, g1, g2, 75).unwrap();
 
     // Residual 0: The final X position (Aiming for 0.0)
     // Residual 1: The final Y position (Aiming for 0.0)
