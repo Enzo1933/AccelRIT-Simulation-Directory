@@ -41,6 +41,6 @@ Because $\omega$ changes continuously, RITACCEL does not attempt a global analyt
 
 $$\begin{pmatrix} R_{next} \\ R'_{next} \end{pmatrix} = \begin{pmatrix} \cos(\omega \, dz) & \frac{1}{\omega} \sin(\omega \, dz) \\ -\omega \sin(\omega \, dz) & \cos(\omega \, dz) \end{pmatrix} \begin{pmatrix} R_{current} \\ R'_{current} \end{pmatrix}$$
 
-*(Note: If the local electric field $V'(z)$ approaches zero, $\omega \to 0$, and the engine dynamically collapses the transport matrix into a standard vacuum drift matrix).*
+(Note: If the local electric field V'(z) approaches zero, $\omega \to 0$, and the engine dynamically collapses the transport matrix into a standard vacuum drift matrix).
 
 At the end of the simulation pipeline, the final reduced coordinates $R_f$ and $R'_f$ are converted back into the physical radius $r_f$ and divergence angle $r'_f$ for accurate phase-space handoff to downstream acceleration columns.
