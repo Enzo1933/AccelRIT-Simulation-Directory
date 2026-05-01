@@ -254,25 +254,6 @@ impl QuadTracker {
         }
         Ok(())
     }
-
-    /// Generates a CSV lookup table for FEMM import
-    pub fn export_femm_lookup(beam: &Beam, geo: &MagnetGeometry) -> Result<()> {
-        let (mmf1, mmf2) = Self::optimize_mmf(beam, geo).unwrap();
-
-        let g1 = geo.field_gradient(mmf1);
-        let g2 = geo.field_gradient(mmf2);
-        let mut file = File::create("../FEMM-Lookup.csv")?;
-
-        writeln!(
-            file,
-            "Magnet,Gradient(T/m),Magnetomotive Force (A*t)\n\
-             Outer_Quads,{},{}\n\
-             Inner_Quad,{},{}",
-            g1, mmf1, g2, mmf2
-        )?;
-
-        Ok(())
-    }
 }
 
 pub struct EinzelTracker {

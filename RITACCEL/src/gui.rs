@@ -1,7 +1,13 @@
+#![allow(non_snake_case)]
 use eframe::egui;
 use egui_plot::{Line, Plot, PlotPoints};
 
-use crate::{beam::Beam, magnet::MagnetGeometry, tracker::QuadTracker};
+use crate::{
+    beam::Beam,
+    einzel::EinzelGeometry,
+    magnet::MagnetGeometry,
+    tracker::{EinzelTracker, QuadTracker},
+};
 
 // ============================================================
 // App State
@@ -15,23 +21,30 @@ pub struct QuadApp {
     xp0_mrad: f64,
 
     // ── Magnet Geometry ───────────────────────────────────────
-    r_gap_mm: f64,   // bore radius
-    l_mag_in: f64,   // magnet length
-    w_pole_mm: f64,  // pole tip width
-    l_iron_mm: f64,  // iron path length
-    a_iron_mm2: f64, // iron cross section mm²
-    mu_i: f64,       // initial permeability
-    b_sat: f64,      // saturation field [T]
-    gap: f64,        // Gap between magnets
+    r_gap_mm: f64,
+    l_mag_in: f64,
+    w_pole_mm: f64,
+    l_iron_mm: f64,
+    a_iron_mm2: f64,
+    mu_i: f64,
+    b_sat: f64,
+    gap: f64,
 
-    // ── Results ───────────────────────────────────────────────
+    // ── Einzel Lens ───────────────────────────────────────────
+    einzel_u_mid: f64,      // Middle electrode voltage (V)
+    einzel_l_mid_mm: f64,   // Middle electrode length (mm)
+    einzel_r_mm: f64,       // Cylinder radius (mm)
+    einzel_start_z_mm: f64, // Tracking start (mm)
+    einzel_end_z_mm: f64,   // Tracking end (mm)
+    einzel_dz_mm: f64,      // Step size (mm)
+
+    // ── Quad Results ──────────────────────────────────────────
     tracker: Option<QuadTracker>,
     mmf1: Option<f64>,
     mmf2: Option<f64>,
     g1: Option<f64>,
     g2: Option<f64>,
 
-    // Flux results
     phi_total1: Option<f64>,
     phi_gap1: Option<f64>,
     phi_leak1: Option<f64>,
@@ -39,7 +52,6 @@ pub struct QuadApp {
     phi_gap2: Option<f64>,
     phi_leak2: Option<f64>,
 
-    // Energy results
     e_total1: Option<f64>,
     e_gap1: Option<f64>,
     e_leak1: Option<f64>,
@@ -47,10 +59,14 @@ pub struct QuadApp {
     e_gap2: Option<f64>,
     e_leak2: Option<f64>,
 
+    // ── Einzel Results ────────────────────────────────────────
+    einzel_tracker: Option<EinzelTracker>,
+
     status: String,
 
-    // ── UI state ──────────────────────────────────────────────
+    // ── UI State ──────────────────────────────────────────────
     active_tab: Tab,
+    active_plot: PlotView,
 }
 
 #[derive(PartialEq)]
@@ -58,6 +74,13 @@ enum Tab {
     Results,
     Fluxes,
     Energies,
+    Einzel,
+}
+
+#[derive(PartialEq)]
+enum PlotView {
+    QuadEnvelope,
+    EinzelProfile,
 }
 
 impl Default for QuadApp {
@@ -76,6 +99,13 @@ impl Default for QuadApp {
             mu_i: 2000.0,
             b_sat: 1.5,
             gap: 4.0,
+
+            einzel_u_mid: -5000.0,
+            einzel_l_mid_mm: 50.0,
+            einzel_r_mm: 20.0,
+            einzel_start_z_mm: -150.0,
+            einzel_end_z_mm: 150.0,
+            einzel_dz_mm: 0.5,
 
             tracker: None,
             mmf1: None,
@@ -97,8 +127,11 @@ impl Default for QuadApp {
             e_gap2: None,
             e_leak2: None,
 
+            einzel_tracker: None,
+
             status: "Set parameters and press Run.".into(),
             active_tab: Tab::Results,
+            active_plot: PlotView::QuadEnvelope,
         }
     }
 }
@@ -134,9 +167,26 @@ impl eframe::App for QuadApp {
                 self.draw_results(ui);
             });
 
-        // ── Central panel: plot ───────────────────────────────
+        // ── Central panel: plot with view switcher ────────────
         egui::CentralPanel::default().show(ctx, |ui| {
-            self.draw_plot(ui);
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    &mut self.active_plot,
+                    PlotView::QuadEnvelope,
+                    "⬛ Quad Envelope",
+                );
+                ui.selectable_value(
+                    &mut self.active_plot,
+                    PlotView::EinzelProfile,
+                    "⚡ Einzel Profile",
+                );
+            });
+            ui.separator();
+
+            match self.active_plot {
+                PlotView::QuadEnvelope => self.draw_plot(ui),
+                PlotView::EinzelProfile => self.draw_einzel_plot(ui),
+            }
         });
     }
 }
@@ -212,18 +262,18 @@ impl QuadApp {
                 ui.add(egui::Slider::new(&mut self.b_sat, 0.5..=2.5).step_by(0.05));
                 ui.end_row();
 
-                ui.label("Inter-magnet Gap(in)");
+                ui.label("Inter-magnet Gap (in)");
                 ui.add(egui::Slider::new(&mut self.gap, 1.0..=100.0).step_by(0.1));
                 ui.end_row();
             });
 
         ui.add_space(16.0);
 
-        // ── Run button ────────────────────────────────────────
+        // ── Quad run button ───────────────────────────────────
         if ui
             .add_sized(
                 [280.0, 40.0],
-                egui::Button::new(egui::RichText::new("Run optimizer").size(15.0)),
+                egui::Button::new(egui::RichText::new("Run Quad Optimizer").size(15.0)),
             )
             .clicked()
         {
@@ -235,7 +285,7 @@ impl QuadApp {
         // Status line
         let status_color = if self.status.starts_with("Error") || self.status.starts_with("No") {
             egui::Color32::RED
-        } else if self.tracker.is_some() {
+        } else if self.tracker.is_some() || self.einzel_tracker.is_some() {
             egui::Color32::GREEN
         } else {
             egui::Color32::GRAY
@@ -258,16 +308,58 @@ impl QuadApp {
                         Err(e) => self.status = format!("Export error: {}", e),
                     }
                 }
-                if ui.button("FEMM Lookup").clicked() {
-                    let (beam, geo) = self.make_beam_and_geo();
-                    match QuadTracker::export_femm_lookup(&beam, &geo) {
-                        std::result::Result::Ok(_) => {
-                            self.status = "Exported FEMM-Lookup.csv".into()
-                        }
-                        Err(e) => self.status = format!("Export error: {}", e),
-                    }
-                }
             });
+        }
+
+        // ── Einzel Lens section ───────────────────────────────
+        ui.add_space(16.0);
+        ui.label(egui::RichText::new("Einzel Lens").strong().size(13.0));
+        ui.separator();
+
+        egui::Grid::new("einzel_grid")
+            .num_columns(2)
+            .spacing([8.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("U_mid (V)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_u_mid, -20000.0..=20000.0)
+                        .step_by(100.0),
+                );
+                ui.end_row();
+
+                ui.label("L_mid (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_l_mid_mm, 5.0..=200.0).step_by(1.0));
+                ui.end_row();
+
+                ui.label("R cylinder (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_r_mm, 5.0..=100.0).step_by(0.5));
+                ui.end_row();
+
+                ui.label("Track start z (mm)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_start_z_mm, -500.0..=0.0).step_by(5.0),
+                );
+                ui.end_row();
+
+                ui.label("Track end z (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_end_z_mm, 0.0..=500.0).step_by(5.0));
+                ui.end_row();
+
+                ui.label("Step size dz (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_dz_mm, 0.1..=5.0).step_by(0.1));
+                ui.end_row();
+            });
+
+        ui.add_space(12.0);
+
+        if ui
+            .add_sized(
+                [280.0, 36.0],
+                egui::Button::new(egui::RichText::new("Run Einzel Simulation").size(14.0)),
+            )
+            .clicked()
+        {
+            self.run_einzel();
         }
     }
 
@@ -279,12 +371,17 @@ impl QuadApp {
             ui.selectable_value(&mut self.active_tab, Tab::Results, "Results");
             ui.selectable_value(&mut self.active_tab, Tab::Fluxes, "Fluxes");
             ui.selectable_value(&mut self.active_tab, Tab::Energies, "Energies");
+            ui.selectable_value(&mut self.active_tab, Tab::Einzel, "Einzel");
         });
         ui.separator();
 
-        if self.tracker.is_none() {
+        // Quad-specific tabs require a completed quad run
+        let needs_quad = matches!(self.active_tab, Tab::Results | Tab::Fluxes | Tab::Energies);
+        if needs_quad && self.tracker.is_none() {
             ui.add_space(20.0);
-            ui.label(egui::RichText::new("No results yet.").color(egui::Color32::GRAY));
+            ui.label(
+                egui::RichText::new("Run the optimizer first.").color(egui::Color32::GRAY),
+            );
             return;
         }
 
@@ -292,8 +389,11 @@ impl QuadApp {
             Tab::Results => self.draw_tab_results(ui),
             Tab::Fluxes => self.draw_tab_fluxes(ui),
             Tab::Energies => self.draw_tab_energies(ui),
+            Tab::Einzel => self.draw_tab_einzel(ui),
         });
     }
+
+    // ── Quad results tabs (unchanged from original) ───────────
 
     fn draw_tab_results(&self, ui: &mut egui::Ui) {
         let t = self.tracker.as_ref().unwrap();
@@ -307,7 +407,6 @@ impl QuadApp {
             0.0
         };
 
-        // ── Optimizer outputs ─────────────────────────────────
         ui.label(egui::RichText::new("Optimizer").strong());
         egui::Grid::new("opt_grid")
             .num_columns(2)
@@ -316,23 +415,18 @@ impl QuadApp {
                 ui.label("MMF₁ (outer)");
                 ui.label(format!("{:.1} A·t", self.mmf1.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("MMF₂ (inner)");
                 ui.label(format!("{:.1} A·t", self.mmf2.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("g₁ (outer)");
                 ui.label(format!("{:.3} T/m", self.g1.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("g₂ (inner)");
                 ui.label(format!("{:.3} T/m", self.g2.unwrap_or(0.0)));
                 ui.end_row();
             });
 
         ui.add_space(10.0);
-
-        // ── Beam spot ─────────────────────────────────────────
         ui.label(egui::RichText::new("Focal spot").strong());
         egui::Grid::new("spot_grid")
             .num_columns(2)
@@ -341,11 +435,9 @@ impl QuadApp {
                 ui.label("Spot x");
                 ui.label(format!("{:.3} mm", t.x_f * 1000.0));
                 ui.end_row();
-
                 ui.label("Spot y");
                 ui.label(format!("{:.3} mm", t.y_f * 1000.0));
                 ui.end_row();
-
                 ui.label("x/y imbalance");
                 ui.colored_label(
                     if imbal > 10.0 {
@@ -359,8 +451,6 @@ impl QuadApp {
             });
 
         ui.add_space(10.0);
-
-        // ── Envelope ──────────────────────────────────────────
         ui.label(egui::RichText::new("Envelope").strong());
         egui::Grid::new("env_grid")
             .num_columns(2)
@@ -380,7 +470,6 @@ impl QuadApp {
                     ),
                 );
                 ui.end_row();
-
                 ui.label("Max env y");
                 ui.colored_label(
                     if clip_y {
@@ -395,20 +484,16 @@ impl QuadApp {
                     ),
                 );
                 ui.end_row();
-
                 ui.label("Total length");
                 ui.label(format!("{:.1} mm", t.total_length * 1000.0));
                 ui.end_row();
             });
 
         ui.add_space(10.0);
-
-        // ── Pole tip fields ───────────────────────────────────
         ui.label(egui::RichText::new("Pole-tip fields").strong());
         let geo = self.make_geo();
         let b1 = geo.solve_b_pole(self.mmf1.unwrap_or(0.0));
         let b2 = geo.solve_b_pole(self.mmf2.unwrap_or(0.0));
-
         egui::Grid::new("btip_grid")
             .num_columns(2)
             .spacing([8.0, 4.0])
@@ -425,7 +510,6 @@ impl QuadApp {
                     format!("{:.3} T", b1),
                 );
                 ui.end_row();
-
                 ui.label("B_tip inner");
                 ui.colored_label(
                     if b2 > self.b_sat * 0.9 {
@@ -438,15 +522,12 @@ impl QuadApp {
                     format!("{:.3} T", b2),
                 );
                 ui.end_row();
-
                 ui.label("B_sat limit");
                 ui.label(format!("{:.2} T", self.b_sat));
                 ui.end_row();
             });
 
         ui.add_space(10.0);
-
-        // ── Beam physics ──────────────────────────────────────
         ui.label(egui::RichText::new("Beam physics").strong());
         egui::Grid::new("phys_grid")
             .num_columns(2)
@@ -463,7 +544,6 @@ impl QuadApp {
                         .join(", ")
                 });
                 ui.end_row();
-
                 ui.label("y crossovers");
                 ui.label(if t.y_xover.is_empty() {
                     "none".into()
@@ -487,15 +567,12 @@ impl QuadApp {
                 ui.label("φ total");
                 ui.label(format!("{:.3} μWb", self.phi_total1.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 ui.label("φ gap");
                 ui.label(format!("{:.3} μWb", self.phi_gap1.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 ui.label("φ leakage");
                 ui.label(format!("{:.3} μWb", self.phi_leak1.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 let total = self.phi_total1.unwrap_or(1.0);
                 let leak = self.phi_leak1.unwrap_or(0.0);
                 ui.label("Leakage fraction");
@@ -504,7 +581,6 @@ impl QuadApp {
             });
 
         ui.add_space(10.0);
-
         ui.label(egui::RichText::new("Inner quad (Q2)").strong());
         egui::Grid::new("flux2_grid")
             .num_columns(2)
@@ -513,15 +589,12 @@ impl QuadApp {
                 ui.label("φ total");
                 ui.label(format!("{:.3} μWb", self.phi_total2.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 ui.label("φ gap");
                 ui.label(format!("{:.3} μWb", self.phi_gap2.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 ui.label("φ leakage");
                 ui.label(format!("{:.3} μWb", self.phi_leak2.unwrap_or(0.0) * 1e6));
                 ui.end_row();
-
                 let total = self.phi_total2.unwrap_or(1.0);
                 let leak = self.phi_leak2.unwrap_or(0.0);
                 ui.label("Leakage fraction");
@@ -539,18 +612,15 @@ impl QuadApp {
                 ui.label("E total");
                 ui.label(format!("{:.4} J", self.e_total1.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("E gap");
                 ui.label(format!("{:.4} J", self.e_gap1.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("E leakage");
                 ui.label(format!("{:.4} J", self.e_leak1.unwrap_or(0.0)));
                 ui.end_row();
             });
 
         ui.add_space(10.0);
-
         ui.label(egui::RichText::new("Inner quad (Q2)").strong());
         egui::Grid::new("energy2_grid")
             .num_columns(2)
@@ -559,16 +629,192 @@ impl QuadApp {
                 ui.label("E total");
                 ui.label(format!("{:.4} J", self.e_total2.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("E gap");
                 ui.label(format!("{:.4} J", self.e_gap2.unwrap_or(0.0)));
                 ui.end_row();
-
                 ui.label("E leakage");
                 ui.label(format!("{:.4} J", self.e_leak2.unwrap_or(0.0)));
                 ui.end_row();
             });
     }
+
+    // ── Einzel results tab ────────────────────────────────────
+
+    fn draw_tab_einzel(&self, ui: &mut egui::Ui) {
+        let Some(et) = &self.einzel_tracker else {
+            ui.add_space(20.0);
+            ui.label(
+                egui::RichText::new("Run Einzel Simulation to see results.")
+                    .color(egui::Color32::GRAY),
+            );
+            ui.add_space(6.0);
+            ui.label(
+                egui::RichText::new("Set parameters below and press\n\"Run Einzel Simulation\".")
+                    .color(egui::Color32::DARK_GRAY)
+                    .size(11.0),
+            );
+            return;
+        };
+
+        // ── Lens configuration ────────────────────────────────
+        ui.label(egui::RichText::new("Lens Configuration").strong());
+        egui::Grid::new("einzel_cfg_grid")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("U_mid");
+                ui.label(format!("{:.0} V", self.einzel_u_mid));
+                ui.end_row();
+
+                ui.label("L_mid");
+                ui.label(format!("{:.1} mm", self.einzel_l_mid_mm));
+                ui.end_row();
+
+                ui.label("R cylinder");
+                ui.label(format!("{:.1} mm", self.einzel_r_mm));
+                ui.end_row();
+
+                let mode = if self.einzel_u_mid < 0.0 {
+                    "Focusing (U < 0)"
+                } else if self.einzel_u_mid > 0.0 {
+                    "Defocusing (U > 0)"
+                } else {
+                    "No voltage"
+                };
+                ui.label("Mode");
+                ui.colored_label(
+                    if self.einzel_u_mid < 0.0 {
+                        egui::Color32::from_rgb(60, 200, 100)
+                    } else if self.einzel_u_mid > 0.0 {
+                        egui::Color32::YELLOW
+                    } else {
+                        egui::Color32::GRAY
+                    },
+                    mode,
+                );
+                ui.end_row();
+            });
+
+        ui.add_space(10.0);
+
+        // ── Focal output ──────────────────────────────────────
+        ui.label(egui::RichText::new("Focal Output").strong());
+        egui::Grid::new("einzel_focal_grid")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Final radius r_f");
+                ui.label(format!("{:.4} mm", et.r_f * 1000.0));
+                ui.end_row();
+
+                ui.label("Final divergence r′_f");
+                ui.label(format!("{:.4} mrad", et.r_prime_f * 1000.0));
+                ui.end_row();
+
+                // Thin-lens focal length estimate: f = -r_in / r'_out (parallel-entry beam)
+                if et.r_prime_f.abs() > 1e-12 {
+                    let f_mm = -(self.x0_mm) / et.r_prime_f;
+                    ui.label("Est. focal length");
+                    ui.colored_label(
+                        if f_mm > 0.0 {
+                            egui::Color32::from_rgb(60, 200, 100)
+                        } else {
+                            egui::Color32::YELLOW
+                        },
+                        format!("{:.1} mm", f_mm),
+                    );
+                    ui.end_row();
+                }
+            });
+
+        ui.add_space(10.0);
+
+        // ── Envelope health ───────────────────────────────────
+        ui.label(egui::RichText::new("Beam Envelope").strong());
+        let max_r_mm = et
+            .r_phys
+            .iter()
+            .map(|r| r.abs())
+            .fold(0.0_f64, f64::max)
+            * 1000.0;
+        let r_cyl = self.einzel_r_mm;
+        let fill_pct = (max_r_mm / r_cyl) * 100.0;
+        let clipped = max_r_mm > r_cyl;
+
+        egui::Grid::new("einzel_env_grid")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Max beam radius");
+                ui.colored_label(
+                    if clipped {
+                        egui::Color32::RED
+                    } else if fill_pct > 70.0 {
+                        egui::Color32::YELLOW
+                    } else {
+                        egui::Color32::WHITE
+                    },
+                    format!("{:.3} mm", max_r_mm),
+                );
+                ui.end_row();
+
+                ui.label("Cylinder fill");
+                ui.colored_label(
+                    if clipped {
+                        egui::Color32::RED
+                    } else if fill_pct > 70.0 {
+                        egui::Color32::YELLOW
+                    } else {
+                        egui::Color32::from_rgb(60, 200, 100)
+                    },
+                    format!("{:.1} %{}", fill_pct, if clipped { "  ⚠ CLIPPED" } else { "" }),
+                );
+                ui.end_row();
+
+                ui.label("Cylinder radius");
+                ui.label(format!("{:.1} mm", r_cyl));
+                ui.end_row();
+            });
+
+        ui.add_space(10.0);
+
+        // ── Voltage stats ─────────────────────────────────────
+        ui.label(egui::RichText::new("On-axis Voltage").strong());
+        let geo = self.make_einzel_geo();
+        let peak_v = et
+            .z
+            .iter()
+            .map(|&z| geo.voltage(z).abs())
+            .fold(0.0_f64, f64::max);
+        egui::Grid::new("einzel_v_grid")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Applied U_mid");
+                ui.label(format!("{:.0} V", self.einzel_u_mid));
+                ui.end_row();
+
+                ui.label("Peak |V(z)|");
+                ui.label(format!("{:.1} V", peak_v));
+                ui.end_row();
+
+                // Show what fraction of beam energy the lens voltage is
+                let beam_energy_ev = self.energy_mev * 1e6;
+                let perturbation_pct = (peak_v / beam_energy_ev) * 100.0;
+                ui.label("V / E_beam");
+                ui.colored_label(
+                    if perturbation_pct > 10.0 {
+                        egui::Color32::YELLOW
+                    } else {
+                        egui::Color32::WHITE
+                    },
+                    format!("{:.3} %", perturbation_pct),
+                );
+                ui.end_row();
+            });
+    }
+
+    // ── Quad envelope plot (original) ─────────────────────────
 
     fn draw_plot(&self, ui: &mut egui::Ui) {
         let Some(t) = &self.tracker else {
@@ -585,33 +831,36 @@ impl QuadApp {
         let bore_mm = self.r_gap_mm;
         let total_mm = t.total_length * 1000.0;
 
-        let x_pos: PlotPoints =
-            t.z.iter()
-                .zip(t.x.iter())
-                .map(|(&z, &x)| [z * 1000.0, x * 1000.0])
-                .collect();
-        let x_neg: PlotPoints =
-            t.z.iter()
-                .zip(t.x.iter())
-                .map(|(&z, &x)| [z * 1000.0, -x * 1000.0])
-                .collect();
-        let y_pos: PlotPoints =
-            t.z.iter()
-                .zip(t.y.iter())
-                .map(|(&z, &y)| [z * 1000.0, y * 1000.0])
-                .collect();
-        let y_neg: PlotPoints =
-            t.z.iter()
-                .zip(t.y.iter())
-                .map(|(&z, &y)| [z * 1000.0, -y * 1000.0])
-                .collect();
+        let x_pos: PlotPoints = t
+            .z
+            .iter()
+            .zip(t.x.iter())
+            .map(|(&z, &x)| [z * 1000.0, x * 1000.0])
+            .collect();
+        let x_neg: PlotPoints = t
+            .z
+            .iter()
+            .zip(t.x.iter())
+            .map(|(&z, &x)| [z * 1000.0, -x * 1000.0])
+            .collect();
+        let y_pos: PlotPoints = t
+            .z
+            .iter()
+            .zip(t.y.iter())
+            .map(|(&z, &y)| [z * 1000.0, y * 1000.0])
+            .collect();
+        let y_neg: PlotPoints = t
+            .z
+            .iter()
+            .zip(t.y.iter())
+            .map(|(&z, &y)| [z * 1000.0, -y * 1000.0])
+            .collect();
 
         Plot::new("envelope")
             .legend(egui_plot::Legend::default())
             .x_axis_label("z (mm)")
             .y_axis_label("r (mm)")
             .show(ui, |plot_ui| {
-                // ── Quad region boundaries ────────────────────
                 let quad_col = egui::Color32::from_rgba_unmultiplied(80, 80, 220, 80);
                 let quad_boundaries = [
                     (0.0, t.q1_end * 1000.0, "Q1"),
@@ -620,49 +869,30 @@ impl QuadApp {
                 ];
 
                 for (z_start, z_end, label) in quad_boundaries {
-                    // Left edge
+                    let h = bore_mm * 1.2;
                     plot_ui.line(
-                        Line::new(PlotPoints::new(vec![
-                            [z_start, -bore_mm * 1.2],
-                            [z_start, bore_mm * 1.2],
-                        ]))
-                        .color(quad_col)
-                        .width(1.5)
-                        .name(label),
+                        Line::new(PlotPoints::new(vec![[z_start, -h], [z_start, h]]))
+                            .color(quad_col)
+                            .width(1.5)
+                            .name(label),
                     );
-
-                    // Right edge
                     plot_ui.line(
-                        Line::new(PlotPoints::new(vec![
-                            [z_end, -bore_mm * 1.2],
-                            [z_end, bore_mm * 1.2],
-                        ]))
-                        .color(quad_col)
-                        .width(1.5),
+                        Line::new(PlotPoints::new(vec![[z_end, -h], [z_end, h]]))
+                            .color(quad_col)
+                            .width(1.5),
                     );
-
-                    // Top cap
                     plot_ui.line(
-                        Line::new(PlotPoints::new(vec![
-                            [z_start, bore_mm * 1.2],
-                            [z_end, bore_mm * 1.2],
-                        ]))
-                        .color(quad_col)
-                        .width(1.5),
+                        Line::new(PlotPoints::new(vec![[z_start, h], [z_end, h]]))
+                            .color(quad_col)
+                            .width(1.5),
                     );
-
-                    // Bottom cap
                     plot_ui.line(
-                        Line::new(PlotPoints::new(vec![
-                            [z_start, -bore_mm * 1.2],
-                            [z_end, -bore_mm * 1.2],
-                        ]))
-                        .color(quad_col)
-                        .width(1.5),
+                        Line::new(PlotPoints::new(vec![[z_start, -h], [z_end, -h]]))
+                            .color(quad_col)
+                            .width(1.5),
                     );
                 }
 
-                // ── Bore limit ────────────────────────────────
                 let bore_col = egui::Color32::from_rgb(200, 60, 60);
                 plot_ui.line(
                     Line::new(PlotPoints::new(vec![[0.0, bore_mm], [total_mm, bore_mm]]))
@@ -671,22 +901,18 @@ impl QuadApp {
                         .name(format!("Bore ±{:.1} mm", bore_mm))
                         .width(1.5),
                 );
-
                 plot_ui.line(
                     Line::new(PlotPoints::new(vec![[0.0, -bore_mm], [total_mm, -bore_mm]]))
                         .color(bore_col)
                         .style(egui_plot::LineStyle::Dashed { length: 8.0 })
                         .width(1.5),
                 );
-
-                // ── Zero axis ─────────────────────────────────
                 plot_ui.line(
                     Line::new(PlotPoints::new(vec![[0.0, 0.0], [total_mm, 0.0]]))
                         .color(egui::Color32::from_rgba_unmultiplied(180, 180, 180, 60))
                         .width(1.0),
                 );
 
-                // ── Beam envelopes ────────────────────────────
                 plot_ui.line(
                     Line::new(x_pos)
                         .color(egui::Color32::from_rgb(60, 130, 220))
@@ -710,7 +936,6 @@ impl QuadApp {
                         .width(2.5),
                 );
 
-                // ── Crossover markers ─────────────────────────
                 for &zc in &t.x_xover {
                     plot_ui.line(
                         Line::new(PlotPoints::new(vec![
@@ -733,6 +958,146 @@ impl QuadApp {
                 }
             });
     }
+
+    // ── Einzel profile plot ───────────────────────────────────
+
+    fn draw_einzel_plot(&self, ui: &mut egui::Ui) {
+        let Some(et) = &self.einzel_tracker else {
+            ui.centered_and_justified(|ui| {
+                ui.label(
+                    egui::RichText::new("Run Einzel Simulation to view beam profile")
+                        .size(18.0)
+                        .color(egui::Color32::GRAY),
+                );
+            });
+            return;
+        };
+
+        let geo = self.make_einzel_geo();
+
+        // Compute max r and normalised voltage scale so V(z) fits within ±70% of the beam band
+        let max_r_mm = et
+            .r_phys
+            .iter()
+            .map(|r| r.abs())
+            .fold(0.0_f64, f64::max)
+            * 1000.0;
+        let max_v = et
+            .z
+            .iter()
+            .map(|&z| geo.voltage(z).abs())
+            .fold(0.0_f64, f64::max);
+        let v_scale_mm_per_v = if max_v > 1e-6 {
+            max_r_mm * 0.7 / max_v
+        } else {
+            1.0
+        };
+
+        // Beam envelope (mirrored, in mm)
+        let r_pos: PlotPoints = et
+            .z
+            .iter()
+            .zip(et.r_phys.iter())
+            .map(|(&z, &r)| [z * 1000.0, r.abs() * 1000.0])
+            .collect();
+        let r_neg: PlotPoints = et
+            .z
+            .iter()
+            .zip(et.r_phys.iter())
+            .map(|(&z, &r)| [z * 1000.0, -(r.abs() * 1000.0)])
+            .collect();
+
+        // On-axis voltage profile (scaled to mm for overlay)
+        let v_line: PlotPoints = et
+            .z
+            .iter()
+            .map(|&z| [z * 1000.0, geo.voltage(z) * v_scale_mm_per_v])
+            .collect();
+
+        let r_cyl_mm = self.einzel_r_mm;
+        let z_start_mm = self.einzel_start_z_mm;
+        let z_end_mm = self.einzel_end_z_mm;
+        let band_h = (max_r_mm * 1.3).max(r_cyl_mm * 1.1);
+        let half_l = self.einzel_l_mid_mm / 2.0;
+
+        Plot::new("einzel_envelope")
+            .legend(egui_plot::Legend::default())
+            .x_axis_label("z (mm)")
+            .y_axis_label("r (mm)")
+            .show(ui, |plot_ui| {
+                // ── Middle electrode region (amber box) ───────────
+                let elec_col = egui::Color32::from_rgba_unmultiplied(220, 160, 40, 70);
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![[-half_l, -band_h], [-half_l, band_h]]))
+                        .color(elec_col)
+                        .width(1.5)
+                        .name("Electrode"),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![[half_l, -band_h], [half_l, band_h]]))
+                        .color(elec_col)
+                        .width(1.5),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![[-half_l, band_h], [half_l, band_h]]))
+                        .color(elec_col)
+                        .width(1.5),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![[-half_l, -band_h], [half_l, -band_h]]))
+                        .color(elec_col)
+                        .width(1.5),
+                );
+
+                // ── Cylinder aperture limit (red dashed) ──────────
+                let cyl_col = egui::Color32::from_rgb(200, 60, 60);
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![
+                        [z_start_mm, r_cyl_mm],
+                        [z_end_mm, r_cyl_mm],
+                    ]))
+                    .color(cyl_col)
+                    .style(egui_plot::LineStyle::Dashed { length: 8.0 })
+                    .name(format!("Aperture ±{:.1} mm", r_cyl_mm))
+                    .width(1.5),
+                );
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![
+                        [z_start_mm, -r_cyl_mm],
+                        [z_end_mm, -r_cyl_mm],
+                    ]))
+                    .color(cyl_col)
+                    .style(egui_plot::LineStyle::Dashed { length: 8.0 })
+                    .width(1.5),
+                );
+
+                // ── Zero axis ─────────────────────────────────────
+                plot_ui.line(
+                    Line::new(PlotPoints::new(vec![[z_start_mm, 0.0], [z_end_mm, 0.0]]))
+                        .color(egui::Color32::from_rgba_unmultiplied(180, 180, 180, 60))
+                        .width(1.0),
+                );
+
+                // ── On-axis voltage profile (amber dashed) ────────
+                plot_ui.line(
+                    Line::new(v_line)
+                        .color(egui::Color32::from_rgb(220, 170, 40))
+                        .style(egui_plot::LineStyle::Dashed { length: 6.0 })
+                        .width(1.5)
+                        .name("V(z) [scaled]"),
+                );
+
+                // ── Beam envelope (green) ─────────────────────────
+                let env_col = egui::Color32::from_rgb(60, 200, 100);
+                plot_ui.line(
+                    Line::new(r_pos)
+                        .color(env_col)
+                        .width(2.5)
+                        .name("r(z)"),
+                );
+                plot_ui.line(Line::new(r_neg).color(env_col).width(2.5));
+            });
+    }
 }
 
 // ============================================================
@@ -750,6 +1115,14 @@ impl QuadApp {
             self.mu_i,
             self.b_sat,
             self.gap * 0.0254,
+        )
+    }
+
+    fn make_einzel_geo(&self) -> EinzelGeometry {
+        EinzelGeometry::new(
+            self.einzel_u_mid,
+            self.einzel_l_mid_mm * 1e-3,
+            self.einzel_r_mm * 1e-3,
         )
     }
 
@@ -774,7 +1147,6 @@ impl QuadApp {
 
                 match QuadTracker::new(&beam, &geo, g1, g2, 400) {
                     std::result::Result::Ok(t) => {
-                        // Flux results
                         let b1 = geo.solve_b_pole(mmf1);
                         let b2 = geo.solve_b_pole(mmf2);
 
@@ -788,7 +1160,6 @@ impl QuadApp {
                         self.phi_gap2 = Some(phi_gap2);
                         self.phi_leak2 = Some(phi_leak2);
 
-                        // Energy results
                         let (e1, e_gap1, e_leak1) = geo.magnetic_energies(b1, mmf1);
                         let (e2, e_gap2, e_leak2) = geo.magnetic_energies(b2, mmf2);
 
@@ -804,6 +1175,8 @@ impl QuadApp {
                         self.g1 = Some(g1);
                         self.g2 = Some(g2);
                         self.tracker = Some(t);
+                        self.active_plot = PlotView::QuadEnvelope;
+                        self.active_tab = Tab::Results;
                         self.status = "Done.".into();
                     }
                     Err(e) => self.status = format!("Tracker error: {}", e),
@@ -811,6 +1184,35 @@ impl QuadApp {
             }
             None => self.status = "Optimizer did not converge.".into(),
         }
+    }
+
+    fn run_einzel(&mut self) {
+        let beam = Beam::new(
+            self.drift_in * 0.0254,
+            self.energy_mev,
+            self.x0_mm * 1e-3,
+            self.xp0_mrad * 1e-3,
+        );
+        let geo = self.make_einzel_geo();
+
+        let start_z = self.einzel_start_z_mm * 1e-3;
+        let end_z = self.einzel_end_z_mm * 1e-3;
+        let dz = self.einzel_dz_mm * 1e-3;
+
+        if start_z >= end_z {
+            self.status = "Error: start z must be less than end z.".into();
+            return;
+        }
+        if dz <= 0.0 {
+            self.status = "Error: step size must be positive.".into();
+            return;
+        }
+
+        let tracker = EinzelTracker::new(&beam, &geo, start_z, end_z, dz);
+        self.einzel_tracker = Some(tracker);
+        self.active_plot = PlotView::EinzelProfile;
+        self.active_tab = Tab::Einzel;
+        self.status = "Einzel simulation complete.".into();
     }
 }
 
@@ -821,13 +1223,13 @@ impl QuadApp {
 pub fn launch_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Quadrupole Optimization Engine")
+            .with_title("RITACCEL Engine")
             .with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Quadrupole Optimization Engine",
+        "RITACCEL Engine",
         options,
         Box::new(|_cc| Box::new(QuadApp::default())),
     )
