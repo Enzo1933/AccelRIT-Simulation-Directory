@@ -812,6 +812,66 @@ impl QuadApp {
                 );
                 ui.end_row();
             });
+
+        ui.add_space(10.0);
+
+        // ── E-field stats ─────────────────────────────────────
+        ui.label(egui::RichText::new("On-axis E-field").strong());
+
+        // Find peak |E| and its z position
+        let (peak_e, peak_e_z_mm) = et
+            .e_field
+            .iter()
+            .zip(et.z.iter())
+            .fold((0.0_f64, 0.0_f64), |(best_e, best_z), (&e, &z)| {
+                if e.abs() > best_e { (e.abs(), z * 1000.0) } else { (best_e, best_z) }
+            });
+
+        // FWHM-style field width: fraction of z range where |E| > half peak
+        let half_peak = peak_e * 0.5;
+        let field_width_mm = {
+            let active: Vec<f64> = et
+                .z
+                .iter()
+                .zip(et.e_field.iter())
+                .filter(|&(_, e)| e.abs() >= half_peak)
+                .map(|(&z, _)| z * 1000.0)
+                .collect();
+            if active.len() >= 2 {
+                active.last().unwrap() - active.first().unwrap()
+            } else {
+                0.0
+            }
+        };
+
+        egui::Grid::new("einzel_e_grid")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Peak |E(z)|");
+                ui.label(format!("{:.2} V/m", peak_e));
+                ui.end_row();
+
+                ui.label("Peak at z");
+                ui.label(format!("{:.2} mm", peak_e_z_mm));
+                ui.end_row();
+
+                ui.label("FWHM field width");
+                ui.label(format!("{:.2} mm", field_width_mm));
+                ui.end_row();
+
+                // E-field at the lens centre (z = 0)
+                let e_at_centre = et
+                    .z
+                    .iter()
+                    .zip(et.e_field.iter())
+                    .min_by(|(za, _), (zb, _)| za.abs().partial_cmp(&zb.abs()).unwrap())
+                    .map(|(_, &e)| e)
+                    .unwrap_or(0.0);
+                ui.label("E at z = 0");
+                ui.label(format!("{:.2} V/m", e_at_centre));
+                ui.end_row();
+            });
     }
 
     // ── Quad envelope plot (original) ─────────────────────────
@@ -993,6 +1053,18 @@ impl QuadApp {
             1.0
         };
 
+        // Scale E-field so its peak also sits at ~50% of the beam band (separate from V scale)
+        let max_e = et
+            .e_field
+            .iter()
+            .map(|e| e.abs())
+            .fold(0.0_f64, f64::max);
+        let e_scale_mm_per_vm = if max_e > 1e-6 {
+            max_r_mm * 0.5 / max_e
+        } else {
+            1.0
+        };
+
         // Beam envelope (mirrored, in mm)
         let r_pos: PlotPoints = et
             .z
@@ -1012,6 +1084,14 @@ impl QuadApp {
             .z
             .iter()
             .map(|&z| [z * 1000.0, geo.voltage(z) * v_scale_mm_per_v])
+            .collect();
+
+        // On-axis E-field profile (scaled to mm for overlay)
+        let e_line: PlotPoints = et
+            .z
+            .iter()
+            .zip(et.e_field.iter())
+            .map(|(&z, &e)| [z * 1000.0, e * e_scale_mm_per_vm])
             .collect();
 
         let r_cyl_mm = self.einzel_r_mm;
@@ -1085,6 +1165,15 @@ impl QuadApp {
                         .style(egui_plot::LineStyle::Dashed { length: 6.0 })
                         .width(1.5)
                         .name("V(z) [scaled]"),
+                );
+
+                // ── On-axis E-field profile (cyan dotted) ─────────
+                plot_ui.line(
+                    Line::new(e_line)
+                        .color(egui::Color32::from_rgb(80, 210, 230))
+                        .style(egui_plot::LineStyle::Dashed { length: 3.0 })
+                        .width(1.5)
+                        .name("E(z) [scaled]"),
                 );
 
                 // ── Beam envelope (green) ─────────────────────────
@@ -1223,13 +1312,13 @@ impl QuadApp {
 pub fn launch_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("RITACCEL Engine")
+            .with_title("RITACCEL")
             .with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "RITACCEL Engine",
+        "RITACCEL",
         options,
         Box::new(|_cc| Box::new(QuadApp::default())),
     )
