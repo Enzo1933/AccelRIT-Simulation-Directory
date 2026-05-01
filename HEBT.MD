@@ -29,7 +29,7 @@ Because the magnetic gradient $G(z)$ is now a highly non-linear, continuous curv
 
 The transverse motion of the particles in the X and Y planes is governed by Hill's Differential Equations:
 $$x'' + k_x(z)x = 0$$
-
+&
 $$y'' - k_y(z)y = 0$$
 Where the focusing strength $k(z) = \frac{q \cdot G(z)}{p}$ depends on the particle's charge $q$ and momentum $p$.
 
