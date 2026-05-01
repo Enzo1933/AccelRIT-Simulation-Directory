@@ -303,7 +303,7 @@ impl EinzelTracker {
         let v_current = v0_beam + geo.voltage(z);
         let v_prime = -geo.e_field(z); // E_z is the negative gradient of Voltage
 
-        // 4. Transform to Reduced Coordinates [R, R']
+        // Transform to Reduced Coordinates [R, R']
         let r_reduced = r * v_current.powf(0.25);
         let r_prime_reduced =
             r_prime * v_current.powf(0.25) + r * 0.25 * v_current.powf(-0.75) * v_prime;
