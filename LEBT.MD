@@ -9,7 +9,7 @@ To avoid the computational overhead of importing Finite Element Analysis (FEA) m
 
 For a lens with cylinder radius $R$ and a middle electrode of length $L$ sitting at voltage $U$, we define a geometric constant $k = 1.318 / R$. The front and rear electrode gaps are defined longitudinally as:
 $$u_1 = k\left(z + \frac{L}{2}\right)$$
-$$u_2 = k\left(z - \frac{L}{2}\right)$$
+$$u_2 = k\left(z - \frac{L}{2}\right)$$ 
 
 The on-axis potential $\Phi(z)$ and the longitudinal electric field $E_z$ (which is $-\Phi'(z)$) are evaluated as:
 $$\Phi(z) = \frac{U}{2} \left[ \tanh(u_1) - \tanh(u_2) \right]$$
