@@ -276,11 +276,11 @@ impl QuadTracker {
 }
 
 pub struct EinzelTracker {
-    pub z: Vec<f64>,
-    pub r_phys: Vec<f64>,
-    pub e_field: Vec<f64>,
-    pub r_f: f64,
-    pub r_prime_f: f64,
+    pub z: Vec<f64>,       // Longitudinal positions
+    pub r_phys: Vec<f64>,  // Physical radius of the beam
+    pub e_field: Vec<f64>, // Electric field at values
+    pub r_f: f64,          // Final x
+    pub r_prime_f: f64,    // final x'
 }
 
 impl EinzelTracker {
