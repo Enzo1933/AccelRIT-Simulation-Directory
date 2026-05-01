@@ -278,7 +278,7 @@ impl QuadTracker {
 pub struct EinzelTracker {
     pub z: Vec<f64>,       // Longitudinal positions
     pub r_phys: Vec<f64>,  // Physical radius of the beam
-    pub e_field: Vec<f64>, // Electric field at values
+    pub e_field: Vec<f64>, // Electric field at longitudinal positions
     pub r_f: f64,          // Final x
     pub r_prime_f: f64,    // final x'
 }
@@ -291,8 +291,8 @@ impl EinzelTracker {
         // Initialize tracking arrays
         let capacity = ((end_z - start_z) / dz).ceil() as usize;
         let mut z_arr = Vec::with_capacity(capacity);
-        let mut r_phys_arr = Vec::with_capacity(capacity);
-        let mut e_field_arr = Vec::with_capacity(capacity);
+        let mut r_phys = Vec::with_capacity(capacity);
+        let mut e_field = Vec::with_capacity(capacity);
 
         // Initial Physical State
         let mut z = start_z;
@@ -327,8 +327,8 @@ impl EinzelTracker {
             let current_r_phys = state[0] * v.powf(-0.25);
 
             z_arr.push(z);
-            r_phys_arr.push(current_r_phys);
-            e_field_arr.push(v_p);
+            r_phys.push(current_r_phys);
+            e_field.push(v_p);
 
             z += dz;
         }
@@ -345,8 +345,8 @@ impl EinzelTracker {
 
         Self {
             z: z_arr,
-            r_phys: r_phys_arr,
-            e_field: e_field_arr,
+            r_phys,
+            e_field,
             r_f,
             r_prime_f,
         }
