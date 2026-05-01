@@ -12,16 +12,16 @@ $$u_1 = k\left(z + \frac{L}{2}\right)$$
 $$u_2 = k\left(z - \frac{L}{2}\right)$$
 
 The on-axis potential $\Phi(z)$ and the longitudinal electric field $E_z$ (which is $-\Phi'(z)$) are evaluated as:
-<center>$$\Phi(z) = \frac{U}{2} \left[ \tanh(u_1) - \tanh(u_2) \right]$$</center>
-<center>$$\Phi'(z) = \frac{U \cdot k}{2} \left[ \text{sech}^2(u_1) - \text{sech}^2(u_2) \right]$$</center>
+$$\Phi(z) = \frac{U}{2} \left[ \tanh(u_1) - \tanh(u_2) \right]$$
+$$\Phi'(z) = \frac{U \cdot k}{2} \left[ \text{sech}^2(u_1) - \text{sech}^2(u_2) \right]$$
 
 Because the non-relativistic beam decelerates (or accelerates) inside the lens, the total kinetic energy equivalent voltage $V(z)$ of the beam at any point is strictly tracked as:
-<center>$$V(z) = V_0 + \Phi(z)$$</center>
+$$V(z) = V_0 + \Phi(z)$$
 *(Where $V_0$ is the initial extraction voltage of the ion source).*
 
 ### 1.3 The Paraxial Ray Equation & The Picht Substitution
 The trajectory of a particle in an electrostatic field with rotational symmetry is governed by the Paraxial Ray Equation:
-<center>$$r'' + \frac{V'(z)}{2V(z)}r' + \frac{V''(z)}{4V(z)}r = 0$$</center>
+$$r'' + \frac{V'(z)}{2V(z)}r' + \frac{V''(z)}{4V(z)}r = 0$$
 
 Numerically integrating this equation using standard methods (like Runge-Kutta) is highly sensitive to step size because of the first-derivative term ($r'$), which represents the beam's changing axial velocity. 
 
