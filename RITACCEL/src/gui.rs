@@ -31,9 +31,9 @@ pub struct QuadApp {
     gap: f64,
 
     // ── Einzel Lens ───────────────────────────────────────────
-    einzel_u_outer: f64,    // Outer electrodes voltage (V)
+    einzel_u_outer: f64,    // Outer electrode voltage (V)
     einzel_u_mid: f64,      // Middle electrode voltage (V)
-    einzel_l_mid_mm: f64,   // Electrode length (mm)
+    einzel_l_mid_mm: f64,   // Middle electrode length (mm)
     einzel_r_mm: f64,       // Cylinder radius (mm)
     einzel_start_z_mm: f64, // Tracking start (mm)
     einzel_end_z_mm: f64,   // Tracking end (mm)
@@ -101,8 +101,8 @@ impl Default for QuadApp {
             b_sat: 1.5,
             gap: 4.0,
 
-            einzel_u_outer: -5000.0,
-            einzel_u_mid: 0.0,
+            einzel_u_outer: 0.0,
+            einzel_u_mid: -5000.0,
             einzel_l_mid_mm: 50.0,
             einzel_r_mm: 20.0,
             einzel_start_z_mm: -150.0,
@@ -147,7 +147,7 @@ impl eframe::App for QuadApp {
         // ── Top bar ──────────────────────────────────────────
         egui::TopBottomPanel::top("title").show(ctx, |ui| {
             ui.add_space(4.0);
-            ui.heading("RITACCEL Engine");
+            ui.heading("RITACCEL");
             ui.add_space(4.0);
         });
 
@@ -324,12 +324,19 @@ impl QuadApp {
             .show(ui, |ui| {
                 ui.label("U_outer (V)");
                 ui.add(
-                    egui::Slider::new(&mut self.einzel_u_outer, 0.0..=25000.0)
+                    egui::Slider::new(&mut self.einzel_u_outer, -20000.0..=20000.0)
                         .step_by(100.0),
                 );
                 ui.end_row();
 
-                ui.label("L_electrode (mm)");
+                ui.label("U_mid (V)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_u_mid, -20000.0..=20000.0)
+                        .step_by(100.0),
+                );
+                ui.end_row();
+
+                ui.label("L_mid (mm)");
                 ui.add(egui::Slider::new(&mut self.einzel_l_mid_mm, 5.0..=200.0).step_by(1.0));
                 ui.end_row();
 
@@ -664,8 +671,17 @@ impl QuadApp {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
+                ui.label("U_outer");
+                ui.label(format!("{:.0} V", self.einzel_u_outer));
+                ui.end_row();
+
                 ui.label("U_mid");
                 ui.label(format!("{:.0} V", self.einzel_u_mid));
+                ui.end_row();
+
+                let du = self.einzel_u_mid - self.einzel_u_outer;
+                ui.label("ΔU (mid − outer)");
+                ui.label(format!("{:.0} V", du));
                 ui.end_row();
 
                 ui.label("L_mid");
@@ -676,18 +692,18 @@ impl QuadApp {
                 ui.label(format!("{:.1} mm", self.einzel_r_mm));
                 ui.end_row();
 
-                let mode = if self.einzel_u_mid < 0.0 {
-                    "Focusing (U < 0)"
-                } else if self.einzel_u_mid > 0.0 {
-                    "Defocusing (U > 0)"
+                let mode = if du < 0.0 {
+                    "Focusing (ΔU < 0)"
+                } else if du > 0.0 {
+                    "Defocusing (ΔU > 0)"
                 } else {
-                    "No voltage"
+                    "No field (ΔU = 0)"
                 };
                 ui.label("Mode");
                 ui.colored_label(
-                    if self.einzel_u_mid < 0.0 {
+                    if du < 0.0 {
                         egui::Color32::from_rgb(60, 200, 100)
-                    } else if self.einzel_u_mid > 0.0 {
+                    } else if du > 0.0 {
                         egui::Color32::YELLOW
                     } else {
                         egui::Color32::GRAY
@@ -836,7 +852,7 @@ impl QuadApp {
                 .z
                 .iter()
                 .zip(et.e_field.iter())
-                .filter(|&(_, e)| e.abs() >= half_peak)
+                .filter(|(_, e)| e.abs() >= half_peak)
                 .map(|(&z, _)| z * 1000.0)
                 .collect();
             if active.len() >= 2 {
@@ -1099,37 +1115,56 @@ impl QuadApp {
         let r_cyl_mm = self.einzel_r_mm;
         let z_start_mm = self.einzel_start_z_mm;
         let z_end_mm = self.einzel_end_z_mm;
-        let band_h = (max_r_mm * 1.3).max(r_cyl_mm * 1.1);
         let half_l = self.einzel_l_mid_mm / 2.0;
+        // Outer cylinders rendered with the same length as the middle electrode,
+        // capped so they don't run past the tracking window.
+        let outer_len = self.einzel_l_mid_mm;
+        let outer_l_start = (z_start_mm).max(-half_l - outer_len);
+        let outer_r_end   = (z_end_mm).min( half_l + outer_len);
+
+        // Helper: draw a filled-wall cylinder cross-section (top + bottom wall at ±r, left + right end caps)
+        let draw_cyl = |plot_ui: &mut egui_plot::PlotUi,
+                        z0: f64, z1: f64,
+                        col: egui::Color32,
+                        label: Option<&str>| {
+            let wall_h = r_cyl_mm;
+            let wall_thick = r_cyl_mm * 0.18; // visual wall thickness
+            // Top wall
+            let top_outer = wall_h;
+            let top_inner = wall_h - wall_thick;
+            // Bottom wall (mirrored)
+            let bot_inner = -top_inner;
+            let bot_outer = -top_outer;
+
+            // Top wall rectangle (4 sides)
+            let top_pts = vec![
+                [z0, top_inner], [z0, top_outer],
+                [z1, top_outer], [z1, top_inner], [z0, top_inner],
+            ];
+            let bot_pts = vec![
+                [z0, bot_inner], [z0, bot_outer],
+                [z1, bot_outer], [z1, bot_inner], [z0, bot_inner],
+            ];
+
+            let mut top_line = Line::new(PlotPoints::new(top_pts)).color(col).width(1.5);
+            if let Some(l) = label { top_line = top_line.name(l); }
+            plot_ui.line(top_line);
+            plot_ui.line(Line::new(PlotPoints::new(bot_pts)).color(col).width(1.5));
+        };
 
         Plot::new("einzel_envelope")
             .legend(egui_plot::Legend::default())
             .x_axis_label("z (mm)")
             .y_axis_label("r (mm)")
             .show(ui, |plot_ui| {
-                // ── Middle electrode region (amber box) ───────────
-                let elec_col = egui::Color32::from_rgba_unmultiplied(220, 160, 40, 70);
-                plot_ui.line(
-                    Line::new(PlotPoints::new(vec![[-half_l, -band_h], [-half_l, band_h]]))
-                        .color(elec_col)
-                        .width(1.5)
-                        .name("Electrode"),
-                );
-                plot_ui.line(
-                    Line::new(PlotPoints::new(vec![[half_l, -band_h], [half_l, band_h]]))
-                        .color(elec_col)
-                        .width(1.5),
-                );
-                plot_ui.line(
-                    Line::new(PlotPoints::new(vec![[-half_l, band_h], [half_l, band_h]]))
-                        .color(elec_col)
-                        .width(1.5),
-                );
-                plot_ui.line(
-                    Line::new(PlotPoints::new(vec![[-half_l, -band_h], [half_l, -band_h]]))
-                        .color(elec_col)
-                        .width(1.5),
-                );
+                // ── Outer electrodes (blue-grey) ──────────────────
+                let outer_col = egui::Color32::from_rgba_unmultiplied(120, 160, 210, 180);
+                draw_cyl(plot_ui, outer_l_start, -half_l, outer_col, Some("Outer (U_outer)"));
+                draw_cyl(plot_ui,  half_l, outer_r_end,  outer_col, None);
+
+                // ── Middle electrode (amber) ──────────────────────
+                let mid_col = egui::Color32::from_rgba_unmultiplied(220, 160, 40, 200);
+                draw_cyl(plot_ui, -half_l, half_l, mid_col, Some("Middle (U_mid)"));
 
                 // ── Cylinder aperture limit (red dashed) ──────────
                 let cyl_col = egui::Color32::from_rgb(200, 60, 60);
@@ -1315,13 +1350,13 @@ impl QuadApp {
 pub fn launch_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("RITACCEL")
+            .with_title("Optimization Engine")
             .with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "RITACCEL",
+        "Optimization Engine",
         options,
         Box::new(|_cc| Box::new(QuadApp::default())),
     )
