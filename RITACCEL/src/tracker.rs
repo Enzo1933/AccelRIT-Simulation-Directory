@@ -280,49 +280,49 @@ impl EinzelTracker {
         let r = beam.x0; // Assuming x0 holds initial radius
         let r_prime = 0.0; // Assuming parallel beam entry
 
-        // Initial Total Energy (V) and E-field (V')
-        let v_current = v0_beam + geo.voltage(z);
-        let v_prime = -geo.e_field(z); // E_z is the negative gradient of Voltage
+        let initial_potential = geo.voltage(z);
+        
+        let v_start = v0_beam; // delta_phi is 0 at the exact start
+        let v_prime_start = geo.e_field(z); 
 
-        // Transform to Reduced Coordinates [R, R']
-        let r_reduced = r * v_current.powf(0.25);
+        let r_reduced = r * v_start.powf(0.25);
         let r_prime_reduced =
-            r_prime * v_current.powf(0.25) + r * 0.25 * v_current.powf(-0.75) * v_prime;
+            r_prime * v_start.powf(0.25) + r * 0.25 * v_start.powf(-0.75) * v_prime_start;
 
         let mut state = Vector2::new(r_reduced, r_prime_reduced);
 
         while z <= end_z {
-            let v = v0_beam + geo.voltage(z);
-            let v_p = -geo.e_field(z);
+            let local_potential = geo.voltage(z);
+            let e_field_z = geo.e_field(z); 
+            
+            let delta_phi = local_potential - initial_potential;
+            let v_current = v0_beam - delta_phi;
 
-            // Calculate focal frequency omega
+            let v_prime_z = e_field_z;
             let omega = geo.omega(z);
 
-            // Generate the Transfer Matrix for this specific dz slice
             let m_slice = EinzelGeometry::transfer_matrix(omega, dz);
-
-            // Multiply! Propagate the beam through the slice
-            state = m_slice * state;
-
-            // Extract physical radius to save to our arrays
-            let current_r_phys = state[0] * v.powf(-0.25);
+            let current_r_phys = state[0] * v_current.powf(-0.25);
 
             z_arr.push(z);
             r_phys.push(current_r_phys);
-            e_field.push(v_p);
+            e_field.push(e_field_z);
 
             z += dz;
         }
 
         // Extract Final State for handoff to the Accel Column
-        let final_v = v0_beam + geo.voltage(z);
-        let final_v_p = -geo.e_field(z);
+        let final_potential = geo.voltage(z);
+        
+        let final_v = v0_beam - (final_potential - initial_potential);
+        let final_v_prime = geo.e_field(z);
 
+        // Reverse Picht Substitution: r = R * V^(-1/4)
         let r_f = state[0] * final_v.powf(-0.25);
-
-        // Reverse the product rule to get physical r' back
-        let r_prime_f =
-            (state[1] - r_f * 0.25 * final_v.powf(-0.75) * final_v_p) * final_v.powf(-0.25);
+        
+        // Reverse Product Rule: r' = R' * V^(-1/4) - R * 0.25 * V^(-5/4) * V'
+        let r_prime_f = state[1] * final_v.powf(-0.25) 
+            - state[0] * 0.25 * final_v.powf(-1.25) * final_v_prime;
 
         Self {
             z: z_arr,

@@ -31,8 +31,9 @@ pub struct QuadApp {
     gap: f64,
 
     // ── Einzel Lens ───────────────────────────────────────────
+    einzel_u_outer: f64,    // Outer electrodes voltage (V)
     einzel_u_mid: f64,      // Middle electrode voltage (V)
-    einzel_l_mid_mm: f64,   // Middle electrode length (mm)
+    einzel_l_mid_mm: f64,   // Electrode length (mm)
     einzel_r_mm: f64,       // Cylinder radius (mm)
     einzel_start_z_mm: f64, // Tracking start (mm)
     einzel_end_z_mm: f64,   // Tracking end (mm)
@@ -100,7 +101,8 @@ impl Default for QuadApp {
             b_sat: 1.5,
             gap: 4.0,
 
-            einzel_u_mid: -5000.0,
+            einzel_u_outer: -5000.0,
+            einzel_u_mid: 0.0,
             einzel_l_mid_mm: 50.0,
             einzel_r_mm: 20.0,
             einzel_start_z_mm: -150.0,
@@ -320,14 +322,14 @@ impl QuadApp {
             .num_columns(2)
             .spacing([8.0, 6.0])
             .show(ui, |ui| {
-                ui.label("U_mid (V)");
+                ui.label("U_outer (V)");
                 ui.add(
-                    egui::Slider::new(&mut self.einzel_u_mid, -20000.0..=20000.0)
+                    egui::Slider::new(&mut self.einzel_u_outer, 0.0..=25000.0)
                         .step_by(100.0),
                 );
                 ui.end_row();
 
-                ui.label("L_mid (mm)");
+                ui.label("L_electrode (mm)");
                 ui.add(egui::Slider::new(&mut self.einzel_l_mid_mm, 5.0..=200.0).step_by(1.0));
                 ui.end_row();
 
@@ -1209,6 +1211,7 @@ impl QuadApp {
 
     fn make_einzel_geo(&self) -> EinzelGeometry {
         EinzelGeometry::new(
+            self.einzel_u_outer,
             self.einzel_u_mid,
             self.einzel_l_mid_mm * 1e-3,
             self.einzel_r_mm * 1e-3,
