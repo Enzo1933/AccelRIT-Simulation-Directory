@@ -186,8 +186,8 @@ impl eframe::App for QuadApp {
             ui.separator();
 
             match self.active_plot {
-                PlotView::QuadEnvelope => self.draw_plot(ui),
                 PlotView::EinzelProfile => self.draw_einzel_plot(ui),
+                PlotView::QuadEnvelope => self.draw_plot(ui),
             }
         });
     }
@@ -227,6 +227,64 @@ impl QuadApp {
             });
 
         ui.add_space(12.0);
+
+        // ── Einzel Lens section ───────────────────────────────
+        ui.add_space(16.0);
+        ui.label(egui::RichText::new("Einzel Lens").strong().size(13.0));
+        ui.separator();
+
+        egui::Grid::new("einzel_grid")
+            .num_columns(2)
+            .spacing([8.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("U_outer (V)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_u_outer, -20000.0..=20000.0)
+                        .step_by(100.0),
+                );
+                ui.end_row();
+
+                ui.label("U_mid (V)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_u_mid, -20000.0..=20000.0)
+                        .step_by(100.0),
+                );
+                ui.end_row();
+
+                ui.label("L_mid (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_l_mid_mm, 5.0..=200.0).step_by(1.0));
+                ui.end_row();
+
+                ui.label("R cylinder (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_r_mm, 5.0..=100.0).step_by(0.5));
+                ui.end_row();
+
+                ui.label("Track start z (mm)");
+                ui.add(
+                    egui::Slider::new(&mut self.einzel_start_z_mm, -500.0..=0.0).step_by(5.0),
+                );
+                ui.end_row();
+
+                ui.label("Track end z (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_end_z_mm, 0.0..=500.0).step_by(5.0));
+                ui.end_row();
+
+                ui.label("Step size dz (mm)");
+                ui.add(egui::Slider::new(&mut self.einzel_dz_mm, 0.1..=5.0).step_by(0.1));
+                ui.end_row();
+            });
+
+        ui.add_space(12.0);
+
+        if ui
+            .add_sized(
+                [280.0, 36.0],
+                egui::Button::new(egui::RichText::new("Run Einzel Simulation").size(14.0)),
+            )
+            .clicked()
+        {
+            self.run_einzel();
+        }
 
         // ── Magnet geometry section ───────────────────────────
         ui.label(egui::RichText::new("Magnet Geometry").strong().size(13.0));
@@ -311,64 +369,6 @@ impl QuadApp {
                     }
                 }
             });
-        }
-
-        // ── Einzel Lens section ───────────────────────────────
-        ui.add_space(16.0);
-        ui.label(egui::RichText::new("Einzel Lens").strong().size(13.0));
-        ui.separator();
-
-        egui::Grid::new("einzel_grid")
-            .num_columns(2)
-            .spacing([8.0, 6.0])
-            .show(ui, |ui| {
-                ui.label("U_outer (V)");
-                ui.add(
-                    egui::Slider::new(&mut self.einzel_u_outer, -20000.0..=20000.0)
-                        .step_by(100.0),
-                );
-                ui.end_row();
-
-                ui.label("U_mid (V)");
-                ui.add(
-                    egui::Slider::new(&mut self.einzel_u_mid, -20000.0..=20000.0)
-                        .step_by(100.0),
-                );
-                ui.end_row();
-
-                ui.label("L_mid (mm)");
-                ui.add(egui::Slider::new(&mut self.einzel_l_mid_mm, 5.0..=200.0).step_by(1.0));
-                ui.end_row();
-
-                ui.label("R cylinder (mm)");
-                ui.add(egui::Slider::new(&mut self.einzel_r_mm, 5.0..=100.0).step_by(0.5));
-                ui.end_row();
-
-                ui.label("Track start z (mm)");
-                ui.add(
-                    egui::Slider::new(&mut self.einzel_start_z_mm, -500.0..=0.0).step_by(5.0),
-                );
-                ui.end_row();
-
-                ui.label("Track end z (mm)");
-                ui.add(egui::Slider::new(&mut self.einzel_end_z_mm, 0.0..=500.0).step_by(5.0));
-                ui.end_row();
-
-                ui.label("Step size dz (mm)");
-                ui.add(egui::Slider::new(&mut self.einzel_dz_mm, 0.1..=5.0).step_by(0.1));
-                ui.end_row();
-            });
-
-        ui.add_space(12.0);
-
-        if ui
-            .add_sized(
-                [280.0, 36.0],
-                egui::Button::new(egui::RichText::new("Run Einzel Simulation").size(14.0)),
-            )
-            .clicked()
-        {
-            self.run_einzel();
         }
     }
 
@@ -1350,13 +1350,13 @@ impl QuadApp {
 pub fn launch_gui() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Optimization Engine")
+            .with_title("RITACCEL Optimization Engine")
             .with_inner_size([1400.0, 860.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Optimization Engine",
+        "RITACCEL",
         options,
         Box::new(|_cc| Box::new(QuadApp::default())),
     )
